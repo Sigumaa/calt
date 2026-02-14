@@ -1,0 +1,17 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+
+  - repo: local
+    hooks:
+      - id: plan-guard
+        name: plan-guard
+        entry: bash scripts/precommit/plan_guard.sh
+        language: system
+        pass_filenames: true
+        always_run: true
