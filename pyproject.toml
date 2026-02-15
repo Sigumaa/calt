@@ -8,10 +8,15 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "anyio>=4.12.1",
+    "discord-py>=2.6.4",
     "fastapi>=0.129.0",
     "httpx>=0.28.1",
     "pydantic>=2.12.5",
+    "typer>=0.23.1",
 ]
+
+[project.scripts]
+calt = "calt.cli:run"
 
 [build-system]
 requires = ["uv_build>=0.9.9,<0.10.0"]

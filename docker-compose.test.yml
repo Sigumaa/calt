@@ -1,0 +1,17 @@
+name: calt-test
+
+services:
+  calt-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: calt:test
+    network_mode: none
+    read_only: true
+    init: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
