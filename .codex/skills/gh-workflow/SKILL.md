@@ -1,6 +1,6 @@
 ---
 name: gh-workflow
-description: Sigumaa/calt リポジトリで GitHub Actions のワークフロー実行状況を `gh workflow` と `gh run` で確認・再実行・監視するための運用スキル。CI失敗の原因切り分け、対象ジョブ再実行、実行ログ取得、失敗通知の一次対応を行う依頼で使用する。典型要求は「workflow一覧を見たい」「runを再実行したい」「失敗ジョブのログを確認したい」。`Sigumaa/calt` 以外のリポジトリ操作、`gh` 未認証環境での実操作、ワークフロー以外の実装作業には使用しない。
+description: Sigumaa/calt リポジトリで GitHub Actions のワークフロー実行状況を `gh workflow` と `gh run` で確認・再実行・監視する運用スキル。CI失敗の原因切り分け、対象ジョブ再実行、実行ログ取得、push直後の最新run監視（`gh run list --limit 1` → `gh run watch RUN_ID --exit-status`）を行う依頼で使用する。典型要求は「workflow一覧を見たい」「runを再実行したい」「失敗ジョブのログを確認したい」。`Sigumaa/calt` 以外のリポジトリ操作、`gh` 未認証環境での実操作、ワークフロー以外の実装作業には使用しない。
 ---
 
 # GitHub Workflow 運用スキル（Sigumaa/calt 限定）
@@ -68,6 +68,13 @@ gh run view <run-id> --job <job-id> --log
 gh run download <run-id> --dir ./artifacts/<run-id>
 ```
 
+7. push直後の最新run監視（必要時のみ）
+```bash
+gh run list --limit 1
+gh run watch <run-id> --exit-status
+```
+- `<run-id>` は `gh run list --limit 1` の出力にある最新 run の ID を指定する。
+
 ## 禁止事項
 - `Sigumaa/calt` 以外の repository に対する `gh workflow` / `gh run` 操作。
 - `gh ... --repo <other-owner/other-repo>` の使用。
@@ -79,6 +86,10 @@ gh run download <run-id> --dir ./artifacts/<run-id>
 - 実行前に `gh repo view` と `gh auth status` の結果を確認する。
 - 実行後は `workflow名/run_id/実行コマンド/結果` を短く記録する。
 - トリガーテストは `references/trigger-test-log.md` に追記する。
+- skill更新後は次を実行して検証する。
+```bash
+uv run --with pyyaml python /home/shiyui/.codex/skills/.system/skill-creator/scripts/quick_validate.py .codex/skills/gh-workflow
+```
 - `description` を変更した場合は差分影響を記録する。
 
 ## 返答方針

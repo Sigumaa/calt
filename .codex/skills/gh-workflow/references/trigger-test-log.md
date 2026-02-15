@@ -35,3 +35,33 @@
 - command: `uv run --with pyyaml python .system/skill-creator/scripts/quick_validate.py .codex/skills/gh-workflow`
 - result: fail
 - reason: このリポジトリに `.system/skill-creator/scripts/quick_validate.py` が存在しないため実行不可
+
+## 更新検証ログ（2026-02-15 追記）
+
+| date | skill | category | input | expected | actual | result | fix |
+|---|---|---|---|---|---|---|---|
+| 2026-02-15 | gh-workflow | positive | push直後の最新runを取得して終了ステータスまで監視したい | 発火して処理する | 発火して処理する | pass | 実行手順に `gh run list --limit 1` → `gh run watch <run-id> --exit-status` を追加 |
+| 2026-02-15 | gh-workflow | ambiguous | 最新run監視を依頼されたが run-id 指定がない | 発火し、短い確認質問を返して判定する | 発火し、短い確認質問を返して判定する | pass | `gh run list --limit 1` で取得した run-id の指定手順を明記 |
+| 2026-02-15 | gh-workflow | boundary | CI失敗ログ確認依頼と `.github/workflows` 実装変更依頼が同時に来る | 発火し、運用操作のみ処理して実装変更は委譲する | 発火し、運用操作のみ処理して実装変更は委譲する | pass | 非適用条件を維持 |
+
+## quality gate 判定（2026-02-15 追記）
+
+- frontmatter: pass
+- trigger precision: pass
+- reproducibility: pass
+- japanese quality: pass
+- maintainability: pass
+- validation logs: pass
+- command sequence run: pass
+- description diff impact: pass
+
+## quick_validate（再実行）
+
+- command: `uv run --with pyyaml python /home/shiyui/.codex/skills/.system/skill-creator/scripts/quick_validate.py .codex/skills/gh-workflow`
+- result: pass
+- reason: 絶対パスの `quick_validate.py` でfrontmatter/構造検証が完了
+
+## quick_validate 修正履歴（2026-02-15 追記）
+
+- 1回目: fail / `Description cannot contain angle brackets (< or >)` / `description` の `<run-id>` を `RUN_ID` に修正
+- 2回目: pass / 上記修正後に同一コマンドで再実行して成功

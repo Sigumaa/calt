@@ -27,10 +27,11 @@
 ## Skills
 
 ### Available skills
-- gh-workflow: `Sigumaa/calt` リポジトリで GitHub Actions のワークフロー実行状況を `gh workflow` と `gh run` で確認・再実行・監視するための運用スキル。CI失敗の原因切り分け、対象ジョブ再実行、実行ログ取得、失敗通知の一次対応を行う依頼で使用する。典型要求は「workflow一覧を見たい」「runを再実行したい」「失敗ジョブのログを確認したい」。`Sigumaa/calt` 以外のリポジトリ操作、`gh` 未認証環境での実操作、ワークフロー以外の実装作業には使用しない。 (file: `.codex/skills/gh-workflow/SKILL.md`)
+- gh-workflow: `Sigumaa/calt` リポジトリで GitHub Actions のワークフロー実行状況を `gh workflow` と `gh run` で確認・再実行・監視する運用スキル。CI失敗の原因切り分け、対象ジョブ再実行、実行ログ取得、push直後の最新run監視（`gh run list --limit 1` → `gh run watch RUN_ID --exit-status`）を行う依頼で使用する。典型要求は「workflow一覧を見たい」「runを再実行したい」「失敗ジョブのログを確認したい」。`Sigumaa/calt` 以外のリポジトリ操作、`gh` 未認証環境での実操作、ワークフロー以外の実装作業には使用しない。 (file: `.codex/skills/gh-workflow/SKILL.md`)
 
 ### 利用タイミング
 - `gh workflow` / `gh run` の一覧確認、失敗run分析、再実行、キャンセル、ログ確認を依頼されたときに使う。
+- pushや手動dispatch直後に、最新runを取得して終了ステータスまで監視したいときに使う。
 - GitHub Actions の運用オペレーションを、`Sigumaa/calt` 限定で実行するときに使う。
 
 ### 非適用条件
