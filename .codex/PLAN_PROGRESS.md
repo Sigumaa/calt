@@ -56,8 +56,9 @@
 - 2026-02-15: daemon検索のevent_type対応とCLI `quickstart`/`doctor` 導線（README・テスト含む）を統合し、`uv run pytest -q` 92件成功と `pre-commit run --all-files` 通過を確認。
 - 2026-02-15: Docker実行時に `/app/examples/sample_plan.json` が参照できないCI失敗へ対応し、`Dockerfile` に `examples/` コピーを追加。
 - 2026-02-15: MVP完了後の拡張計画v2を策定し、優先順を安全→CLIとして再起動。
+- 2026-02-15: フェーズA-1として `session mode`（`normal`/`dry_run`）をAPI/CLI/DBへ追加し、high-risk stepの `confirm_high_risk` 必須化と dry_run 時の apply 系実行拒否（`write_file_apply`, `apply_patch mode=apply`）を実装。統合/単体テストを更新。
 
 ## 次アクション（最大3つ）
-1. session mode=dry_run と high-risk確認フラグのAPI/CLI仕様を確定
-2. strict/dev安全プロファイルの実装とテスト項目を定義
+1. strict/dev安全プロファイルの実装とテスト項目を定義
+2. strict/devの承認強度・実行制約差分をAPI/CLI仕様へ反映
 3. wizard run の最小対話フロー仕様を確定

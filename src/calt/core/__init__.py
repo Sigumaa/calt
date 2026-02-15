@@ -1,4 +1,4 @@
-from .models import Approval, Artifact, Plan, Run, Session, Step, WorkflowStatus
+from .models import Approval, Artifact, Plan, Run, Session, SessionMode, Step, WorkflowStatus
 from .state_machine import (
     InvalidStateTransition,
     TRANSITION_RULES,
@@ -14,6 +14,7 @@ __all__ = [
     "Plan",
     "Run",
     "Session",
+    "SessionMode",
     "Step",
     "TRANSITION_RULES",
     "WorkflowStatus",

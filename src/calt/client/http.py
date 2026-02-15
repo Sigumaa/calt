@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 
@@ -35,8 +35,13 @@ class DaemonApiClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def create_session(self, goal: str | None = None) -> dict[str, Any]:
-        payload: dict[str, Any] = {}
+    async def create_session(
+        self,
+        goal: str | None = None,
+        *,
+        mode: Literal["normal", "dry_run"] = "normal",
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"mode": mode}
         if goal is not None:
             payload["goal"] = goal
         return await self._request("POST", "/api/v1/sessions", json=payload)
@@ -94,10 +99,17 @@ class DaemonApiClient:
             json={"approved_by": approved_by, "source": source},
         )
 
-    async def execute_step(self, session_id: str, step_id: str) -> dict[str, Any]:
+    async def execute_step(
+        self,
+        session_id: str,
+        step_id: str,
+        *,
+        confirm_high_risk: bool = False,
+    ) -> dict[str, Any]:
         return await self._request(
             "POST",
             f"/api/v1/sessions/{session_id}/steps/{step_id}/execute",
+            json={"confirm_high_risk": confirm_high_risk},
         )
 
     async def stop_session(self, session_id: str) -> dict[str, Any]:

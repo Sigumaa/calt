@@ -29,7 +29,7 @@ async def test_daemon_client_builds_expected_requests() -> None:
         token="test-token",
         transport=transport,
     ) as client:
-        await client.create_session(goal="demo")
+        await client.create_session(goal="demo", mode="dry_run")
         await client.import_plan(
             "session-1",
             version=2,
@@ -47,7 +47,7 @@ async def test_daemon_client_builds_expected_requests() -> None:
         )
         await client.approve_plan("session-1", 2, approved_by="user-1", source="cli")
         await client.approve_step("session-1", "step_001", approved_by="user-1", source="cli")
-        await client.execute_step("session-1", "step_001")
+        await client.execute_step("session-1", "step_001", confirm_high_risk=True)
         await client.stop_session("session-1")
         await client.search_events("session-1", q="list_dir")
         await client.list_artifacts("session-1")
@@ -67,7 +67,7 @@ async def test_daemon_client_builds_expected_requests() -> None:
         ("GET", "/api/v1/tools/read_file/permissions"),
     ]
     assert all(req.headers["Authorization"] == "Bearer test-token" for req in captured_requests)
-    assert _decode_json_body(captured_requests[0]) == {"goal": "demo"}
+    assert _decode_json_body(captured_requests[0]) == {"goal": "demo", "mode": "dry_run"}
     assert _decode_json_body(captured_requests[1]) == {
         "version": 2,
         "title": "imported",
@@ -84,6 +84,7 @@ async def test_daemon_client_builds_expected_requests() -> None:
     }
     assert _decode_json_body(captured_requests[2]) == {"approved_by": "user-1", "source": "cli"}
     assert _decode_json_body(captured_requests[3]) == {"approved_by": "user-1", "source": "cli"}
+    assert _decode_json_body(captured_requests[4]) == {"confirm_high_risk": True}
     assert captured_requests[6].url.params["q"] == "list_dir"
 
 

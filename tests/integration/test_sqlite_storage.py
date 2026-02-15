@@ -107,3 +107,26 @@ def test_connect_sqlite_creates_parent_directory_when_missing(tmp_path: Path) ->
         assert database_path.exists()
     finally:
         connection.close()
+
+
+def test_initialize_storage_adds_mode_column_for_legacy_sessions_table() -> None:
+    connection = connect_sqlite(":memory:")
+    try:
+        connection.execute(
+            """
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                goal TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        initialize_storage(connection)
+        columns = {
+            row["name"] for row in connection.execute("PRAGMA table_info(sessions)").fetchall()
+        }
+        assert "mode" in columns
+    finally:
+        connection.close()

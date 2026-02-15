@@ -23,6 +23,11 @@ class WorkflowStatus(str, Enum):
     skipped = "skipped"
 
 
+class SessionMode(str, Enum):
+    normal = "normal"
+    dry_run = "dry_run"
+
+
 TERMINAL_STATUSES: frozenset[WorkflowStatus] = frozenset(
     {
         WorkflowStatus.succeeded,
@@ -36,6 +41,7 @@ TERMINAL_STATUSES: frozenset[WorkflowStatus] = frozenset(
 class Session(BaseModel):
     id: str = Field(default_factory=lambda: f"session_{uuid4().hex[:12]}")
     goal: str | None = None
+    mode: SessionMode = SessionMode.normal
     status: WorkflowStatus = WorkflowStatus.pending
     plan_version: int | None = None
     created_at: datetime = Field(default_factory=utc_now)

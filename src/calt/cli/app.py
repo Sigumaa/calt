@@ -4,7 +4,7 @@ import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import anyio
 import httpx
@@ -24,7 +24,12 @@ class DaemonClientProtocol(Protocol):
         tb: Any,
     ) -> None: ...
 
-    async def create_session(self, goal: str | None = None) -> dict[str, Any]: ...
+    async def create_session(
+        self,
+        goal: str | None = None,
+        *,
+        mode: Literal["normal", "dry_run"] = "normal",
+    ) -> dict[str, Any]: ...
 
     async def import_plan(
         self,
@@ -54,7 +59,13 @@ class DaemonClientProtocol(Protocol):
         source: str,
     ) -> dict[str, Any]: ...
 
-    async def execute_step(self, session_id: str, step_id: str) -> dict[str, Any]: ...
+    async def execute_step(
+        self,
+        session_id: str,
+        step_id: str,
+        *,
+        confirm_high_risk: bool = False,
+    ) -> dict[str, Any]: ...
 
     async def stop_session(self, session_id: str) -> dict[str, Any]: ...
 
@@ -122,6 +133,7 @@ def _render_session_create_payload(payload: dict[str, Any]) -> str:
         [
             ("Session ID", payload.get("id")),
             ("Goal", payload.get("goal")),
+            ("Mode", payload.get("mode")),
             ("Status", payload.get("status")),
             ("Plan Version", payload.get("plan_version")),
             ("Created At", payload.get("created_at")),
@@ -884,13 +896,18 @@ def build_app(client_factory: ClientFactory | None = None) -> typer.Typer:
     def session_create(
         ctx: typer.Context,
         goal: str | None = typer.Option(None, "--goal", help="Session goal."),
+        mode: Literal["normal", "dry_run"] = typer.Option(
+            "normal",
+            "--mode",
+            help="Session mode.",
+        ),
         json_output: bool = typer.Option(False, "--json", help="Output raw JSON payload."),
     ) -> None:
         settings = _require_settings(ctx)
         _run_and_print(
             settings,
             resolved_client_factory,
-            lambda client: client.create_session(goal=goal),
+            lambda client: client.create_session(goal=goal, mode=mode),
             as_json=json_output,
             renderer=_render_session_create_payload,
         )
@@ -991,13 +1008,22 @@ def build_app(client_factory: ClientFactory | None = None) -> typer.Typer:
         ctx: typer.Context,
         session_id: str = typer.Argument(..., help="Session ID."),
         step_id: str = typer.Argument(..., help="Step ID."),
+        confirm_high_risk: bool = typer.Option(
+            False,
+            "--confirm-high-risk",
+            help="Confirm execution for high-risk step.",
+        ),
         json_output: bool = typer.Option(False, "--json", help="Output raw JSON payload."),
     ) -> None:
         settings = _require_settings(ctx)
         _run_and_print(
             settings,
             resolved_client_factory,
-            lambda client: client.execute_step(session_id, step_id),
+            lambda client: client.execute_step(
+                session_id,
+                step_id,
+                confirm_high_risk=confirm_high_risk,
+            ),
             as_json=json_output,
             renderer=_render_step_execute_payload,
         )

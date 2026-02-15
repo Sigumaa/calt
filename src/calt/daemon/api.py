@@ -4,12 +4,12 @@ import hashlib
 import json
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
-from calt.core import Run, Session, WorkflowStatus, transition_run
+from calt.core import Run, Session, SessionMode, WorkflowStatus, transition_run
 from calt.runtime import StepExecutor, StepRunResult
 from calt.storage import connect_sqlite, initialize_storage
 
@@ -25,12 +25,14 @@ DEFAULT_TOOLS: tuple[tuple[str, str, str], ...] = (
 
 class CreateSessionRequest(BaseModel):
     goal: str | None = None
+    mode: Literal["normal", "dry_run"] = "normal"
 
 
 class PlanStepInput(BaseModel):
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     tool: str = Field(min_length=1)
+    risk: Literal["low", "medium", "high"] = "low"
     inputs: dict[str, Any] = Field(default_factory=dict)
     timeout_sec: int = Field(default=30, ge=1, le=120)
 
@@ -45,6 +47,10 @@ class PlanImportRequest(BaseModel):
 class ApprovalRequest(BaseModel):
     approved_by: str = "system"
     source: str = "api"
+
+
+class ExecuteStepRequest(BaseModel):
+    confirm_high_risk: bool = False
 
 
 def _require_bearer_token(
@@ -81,7 +87,7 @@ def _fetch_session_or_404(
 ) -> sqlite3.Row:
     row = connection.execute(
         """
-        SELECT id, goal, status, created_at, updated_at
+        SELECT id, goal, mode, status, created_at, updated_at
         FROM sessions
         WHERE id = ?
         """,
@@ -129,6 +135,7 @@ def _fetch_step_or_404(
             s.title,
             s.tool_name,
             s.status,
+            s.risk,
             s.payload_json,
             p.id AS plan_id,
             p.version AS plan_version
@@ -195,10 +202,12 @@ def _parse_step_payload(payload_json: str | None) -> tuple[dict[str, Any], int]:
 def _serialize_step_row(row: sqlite3.Row) -> dict[str, Any]:
     payload_json = row["payload_json"] if "payload_json" in row.keys() else None
     inputs, timeout_sec = _parse_step_payload(payload_json)
+    risk = row["risk"] if "risk" in row.keys() else "low"
     return {
         "id": row["step_key"],
         "title": row["title"],
         "tool": row["tool_name"],
+        "risk": risk or "low",
         "status": row["status"],
         "inputs": inputs,
         "timeout_sec": timeout_sec,
@@ -342,17 +351,18 @@ def create_app(
         payload: CreateSessionRequest,
         _: str = Depends(_require_bearer_token),
     ) -> dict[str, Any]:
-        session = Session(goal=payload.goal)
+        session = Session(goal=payload.goal, mode=payload.mode)
         connection = connect_sqlite(database_path)
         try:
             connection.execute(
                 """
-                INSERT INTO sessions (id, goal, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO sessions (id, goal, mode, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session.id,
                     session.goal or "",
+                    session.mode.value,
                     session.status.value,
                     session.created_at.isoformat(),
                     session.updated_at.isoformat(),
@@ -372,6 +382,7 @@ def create_app(
         return {
             "id": session.id,
             "goal": session.goal,
+            "mode": session.mode.value,
             "status": session.status.value,
             "plan_version": session.plan_version,
             "created_at": session.created_at.isoformat(),
@@ -400,6 +411,7 @@ def create_app(
         return {
             "id": row["id"],
             "goal": row["goal"] or None,
+            "mode": row["mode"] or SessionMode.normal.value,
             "status": row["status"],
             "needs_replan": row["status"] == WorkflowStatus.failed.value,
             "plan_version": version_row["current_plan_version"],
@@ -446,9 +458,10 @@ def create_app(
                         title,
                         tool_name,
                         status,
+                        risk,
                         payload_json
                     )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         plan_row["id"],
@@ -456,6 +469,7 @@ def create_app(
                         step.title,
                         step.tool,
                         WorkflowStatus.pending.value,
+                        step.risk,
                         json.dumps(
                             {
                                 "inputs": step.inputs,
@@ -509,6 +523,7 @@ def create_app(
                     "id": step.id,
                     "title": step.title,
                     "tool": step.tool,
+                    "risk": step.risk,
                     "status": WorkflowStatus.pending.value,
                     "inputs": step.inputs,
                     "timeout_sec": step.timeout_sec,
@@ -529,7 +544,7 @@ def create_app(
             plan_row = _fetch_plan_or_404(connection, session_id, version)
             step_rows = connection.execute(
                 """
-                SELECT step_key, title, tool_name, status, payload_json
+                SELECT step_key, title, tool_name, risk, status, payload_json
                 FROM steps
                 WHERE plan_id = ?
                 ORDER BY id
@@ -652,6 +667,7 @@ def create_app(
     def execute_step(
         session_id: str,
         step_id: str,
+        payload: ExecuteStepRequest | None = None,
         _: str = Depends(_require_bearer_token),
     ) -> dict[str, Any]:
         connection = connect_sqlite(database_path)
@@ -703,10 +719,63 @@ def create_app(
                     detail="plan and step approvals are required before execution",
                 )
 
+            confirm_high_risk = payload.confirm_high_risk if payload is not None else False
+            step_risk_value = step_row["risk"] if step_row["risk"] is not None else "low"
+            step_risk = str(step_risk_value).lower()
+            if step_risk not in {"low", "medium", "high"}:
+                step_risk = "low"
+            if step_risk == "high" and not confirm_high_risk:
+                detail = "high-risk step requires confirm_high_risk=true"
+                _insert_event(
+                    connection,
+                    session_id=session_id,
+                    event_type="step_execution_rejected",
+                    summary=f"step {step_id} rejected",
+                    payload_text=json.dumps(
+                        {
+                            "reason": "high_risk_confirmation_required",
+                            "step_id": step_id,
+                            "risk": step_risk,
+                        },
+                        ensure_ascii=True,
+                    ),
+                )
+                connection.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=detail,
+                )
+
             step_inputs, timeout_sec = _parse_step_payload(step_row["payload_json"])
             workspace_root, artifacts_root = _ensure_session_paths(data_root_path, session_id)
             runtime_inputs = dict(step_inputs)
             runtime_inputs.setdefault("workspace_root", str(workspace_root))
+            session_mode = str(session_row["mode"] or SessionMode.normal.value)
+            is_destructive_apply = step_row["tool_name"] == "write_file_apply" or (
+                step_row["tool_name"] == "apply_patch" and runtime_inputs.get("mode") == "apply"
+            )
+            if session_mode == SessionMode.dry_run.value and is_destructive_apply:
+                detail = "dry_run session rejects destructive apply operations"
+                _insert_event(
+                    connection,
+                    session_id=session_id,
+                    event_type="step_execution_rejected",
+                    summary=f"step {step_id} rejected",
+                    payload_text=json.dumps(
+                        {
+                            "reason": "dry_run_apply_blocked",
+                            "step_id": step_id,
+                            "tool": step_row["tool_name"],
+                            "mode": session_mode,
+                        },
+                        ensure_ascii=True,
+                    ),
+                )
+                connection.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=detail,
+                )
 
             run = Run(
                 session_id=session_id,

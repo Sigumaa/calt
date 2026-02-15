@@ -8,7 +8,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from calt.daemon import create_app
-from calt.tools import write_file_preview
+from calt.tools import apply_patch, write_file_preview
 
 AUTH_HEADERS = {"Authorization": "Bearer test-token"}
 
@@ -37,8 +37,12 @@ async def client(app) -> AsyncIterator[AsyncClient]:
         yield async_client
 
 
-async def _create_session(client: AsyncClient) -> str:
-    response = await client.post("/api/v1/sessions", headers=AUTH_HEADERS, json={"goal": "preview gate"})
+async def _create_session(client: AsyncClient, *, mode: str = "normal") -> str:
+    response = await client.post(
+        "/api/v1/sessions",
+        headers=AUTH_HEADERS,
+        json={"goal": "preview gate", "mode": mode},
+    )
     assert response.status_code == 200
     return response.json()["id"]
 
@@ -210,3 +214,113 @@ async def test_write_apply_succeeds_after_preview_record(
         assert [row["status"] for row in run_rows] == ["succeeded", "succeeded"]
     finally:
         connection.close()
+
+
+@pytest.mark.anyio
+async def test_dry_run_allows_preview_and_rejects_write_apply(
+    client: AsyncClient,
+    data_root: Path,
+) -> None:
+    session_id = await _create_session(client, mode="dry_run")
+    workspace_root = data_root / "sessions" / session_id / "workspace"
+    expected_preview = write_file_preview(workspace_root, "memo.txt", "after\n")
+    plan_payload = {
+        "version": 1,
+        "title": "dry run write apply guard",
+        "session_goal": "dry run blocks write apply",
+        "steps": [
+            {
+                "id": "step_preview",
+                "title": "preview write",
+                "tool": "write_file_preview",
+                "inputs": {"path": "memo.txt", "content": "after\n"},
+                "timeout_sec": 30,
+            },
+            {
+                "id": "step_apply",
+                "title": "apply write",
+                "tool": "write_file_apply",
+                "inputs": {
+                    "path": "memo.txt",
+                    "content": "after\n",
+                    "preview": expected_preview,
+                },
+                "timeout_sec": 30,
+            },
+        ],
+    }
+    await _import_plan(client, session_id, plan_payload)
+    await _approve_plan(client, session_id)
+    await _approve_step(client, session_id, "step_preview")
+    await _approve_step(client, session_id, "step_apply")
+
+    preview_execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_preview/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert preview_execute.status_code == 200
+    assert preview_execute.json()["status"] == "succeeded"
+
+    apply_execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_apply/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert apply_execute.status_code == 409
+    assert "dry_run" in apply_execute.json()["detail"]
+
+
+@pytest.mark.anyio
+async def test_dry_run_allows_patch_preview_and_rejects_patch_apply(
+    client: AsyncClient,
+    data_root: Path,
+) -> None:
+    session_id = await _create_session(client, mode="dry_run")
+    workspace_root = data_root / "sessions" / session_id / "workspace"
+    target = workspace_root / "patch_target.txt"
+    target.write_text("before\n", encoding="utf-8")
+    patch = """--- a/patch_target.txt
++++ b/patch_target.txt
+@@ -1 +1 @@
+-before
++after
+"""
+    expected_preview = apply_patch(workspace_root, patch, mode="preview")
+    plan_payload = {
+        "version": 1,
+        "title": "dry run patch apply guard",
+        "session_goal": "dry run blocks patch apply",
+        "steps": [
+            {
+                "id": "step_patch_preview",
+                "title": "preview patch",
+                "tool": "apply_patch",
+                "inputs": {"patch": patch, "mode": "preview"},
+                "timeout_sec": 30,
+            },
+            {
+                "id": "step_patch_apply",
+                "title": "apply patch",
+                "tool": "apply_patch",
+                "inputs": {"patch": patch, "mode": "apply", "preview": expected_preview},
+                "timeout_sec": 30,
+            },
+        ],
+    }
+    await _import_plan(client, session_id, plan_payload)
+    await _approve_plan(client, session_id)
+    await _approve_step(client, session_id, "step_patch_preview")
+    await _approve_step(client, session_id, "step_patch_apply")
+
+    preview_execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_patch_preview/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert preview_execute.status_code == 200
+    assert preview_execute.json()["status"] == "succeeded"
+
+    apply_execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_patch_apply/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert apply_execute.status_code == 409
+    assert "dry_run" in apply_execute.json()["detail"]

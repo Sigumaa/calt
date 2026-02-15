@@ -43,19 +43,46 @@ async def client(app) -> AsyncIterator[AsyncClient]:
         yield async_client
 
 
-async def _create_session(client: AsyncClient) -> str:
-    response = await client.post("/api/v1/sessions", headers=AUTH_HEADERS, json={"goal": "api test"})
+async def _create_session(client: AsyncClient, *, mode: str = "normal") -> str:
+    response = await client.post(
+        "/api/v1/sessions",
+        headers=AUTH_HEADERS,
+        json={"goal": "api test", "mode": mode},
+    )
     assert response.status_code == 200
     return response.json()["id"]
 
 
-async def _import_plan(client: AsyncClient, session_id: str) -> None:
+async def _import_plan(
+    client: AsyncClient,
+    session_id: str,
+    payload: dict[str, object] | None = None,
+) -> None:
     response = await client.post(
         f"/api/v1/sessions/{session_id}/plans/import",
         headers=AUTH_HEADERS,
-        json=DEFAULT_PLAN_PAYLOAD,
+        json=payload or DEFAULT_PLAN_PAYLOAD,
     )
     assert response.status_code == 200
+
+
+@pytest.mark.anyio
+async def test_create_session_supports_mode_in_request_and_response(client: AsyncClient) -> None:
+    create = await client.post(
+        "/api/v1/sessions",
+        headers=AUTH_HEADERS,
+        json={"goal": "api test", "mode": "dry_run"},
+    )
+    assert create.status_code == 200
+    payload = create.json()
+    assert payload["mode"] == "dry_run"
+
+    get_session = await client.get(
+        f"/api/v1/sessions/{payload['id']}",
+        headers=AUTH_HEADERS,
+    )
+    assert get_session.status_code == 200
+    assert get_session.json()["mode"] == "dry_run"
 
 
 @pytest.mark.anyio
@@ -107,6 +134,58 @@ async def test_execute_step_allows_after_plan_and_step_approval(client: AsyncCli
     )
     assert session.status_code == 200
     assert session.json()["status"] == "succeeded"
+
+
+@pytest.mark.anyio
+async def test_execute_step_rejects_high_risk_without_confirm_and_allows_with_confirm(
+    client: AsyncClient,
+) -> None:
+    session_id = await _create_session(client)
+    high_risk_payload = {
+        "version": 1,
+        "title": "high risk plan",
+        "session_goal": "verify high risk confirm",
+        "steps": [
+            {
+                "id": "step_high",
+                "title": "high risk execute",
+                "tool": "list_dir",
+                "risk": "high",
+                "inputs": {"path": "."},
+                "timeout_sec": 30,
+            }
+        ],
+    }
+    await _import_plan(client, session_id, high_risk_payload)
+
+    approve_plan = await client.post(
+        f"/api/v1/sessions/{session_id}/plans/1/approve",
+        headers=AUTH_HEADERS,
+        json={"approved_by": "user_1", "source": "integration"},
+    )
+    assert approve_plan.status_code == 200
+
+    approve_step = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_high/approve",
+        headers=AUTH_HEADERS,
+        json={"approved_by": "user_1", "source": "integration"},
+    )
+    assert approve_step.status_code == 200
+
+    rejected = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_high/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert rejected.status_code == 409
+    assert "confirm_high_risk=true" in rejected.json()["detail"]
+
+    execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_high/execute",
+        headers=AUTH_HEADERS,
+        json={"confirm_high_risk": True},
+    )
+    assert execute.status_code == 200
+    assert execute.json()["status"] == "succeeded"
 
 
 @pytest.mark.anyio

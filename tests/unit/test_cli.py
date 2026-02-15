@@ -31,11 +31,20 @@ class MockDaemonClient:
         self.calls.append((method, payload))
         return {"ok": True, "method": method, **payload}
 
-    async def create_session(self, goal: str | None = None) -> dict[str, Any]:
-        payload = self._record("create_session", goal=goal)
+    async def create_session(
+        self,
+        goal: str | None = None,
+        *,
+        mode: str = "normal",
+    ) -> dict[str, Any]:
+        record_payload: dict[str, Any] = {"goal": goal}
+        if mode != "normal":
+            record_payload["mode"] = mode
+        payload = self._record("create_session", **record_payload)
         payload.update(
             {
                 "id": "session-1",
+                "mode": mode,
                 "status": "awaiting_plan_approval",
                 "plan_version": None,
                 "created_at": "2026-02-15T00:00:00Z",
@@ -95,8 +104,17 @@ class MockDaemonClient:
             approved=True,
         )
 
-    async def execute_step(self, session_id: str, step_id: str) -> dict[str, Any]:
-        payload = self._record("execute_step", session_id=session_id, step_id=step_id)
+    async def execute_step(
+        self,
+        session_id: str,
+        step_id: str,
+        *,
+        confirm_high_risk: bool = False,
+    ) -> dict[str, Any]:
+        record_payload: dict[str, Any] = {"session_id": session_id, "step_id": step_id}
+        if confirm_high_risk:
+            record_payload["confirm_high_risk"] = True
+        payload = self._record("execute_step", **record_payload)
         payload.update(
             {
                 "status": "succeeded",
@@ -187,6 +205,18 @@ def test_session_create_command(cli_fixture: tuple[Any, MockDaemonClient, MockCl
     assert factory.calls == [("http://daemon.local", "test-token")]
     assert client.calls[0] == ("create_session", {"goal": "demo"})
     assert _parse_stdout(result)["method"] == "create_session"
+
+
+def test_session_create_command_with_dry_run_mode(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, client, _ = cli_fixture
+    result = _invoke(app, ["session", "create", "--goal", "demo", "--mode", "dry_run"])
+    assert result.exit_code == 0
+    assert client.calls == [("create_session", {"goal": "demo", "mode": "dry_run"})]
+    payload = _parse_stdout(result)
+    assert payload["method"] == "create_session"
+    assert payload["mode"] == "dry_run"
 
 
 def test_plan_import_command(
@@ -284,6 +314,28 @@ def test_step_execute_command(cli_fixture: tuple[Any, MockDaemonClient, MockClie
     result = _invoke(app, ["step", "execute", "session-1", "step_001"])
     assert result.exit_code == 0
     assert client.calls == [("execute_step", {"session_id": "session-1", "step_id": "step_001"})]
+    assert _parse_stdout(result)["method"] == "execute_step"
+
+
+def test_step_execute_command_with_confirm_high_risk(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, client, _ = cli_fixture
+    result = _invoke(
+        app,
+        ["step", "execute", "session-1", "step_001", "--confirm-high-risk"],
+    )
+    assert result.exit_code == 0
+    assert client.calls == [
+        (
+            "execute_step",
+            {
+                "session_id": "session-1",
+                "step_id": "step_001",
+                "confirm_high_risk": True,
+            },
+        )
+    ]
     assert _parse_stdout(result)["method"] == "execute_step"
 
 
