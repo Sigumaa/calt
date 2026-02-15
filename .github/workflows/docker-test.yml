@@ -1,0 +1,19 @@
+name: Docker Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  docker-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check Docker Compose
+        run: docker compose version
+      - name: Run Docker test script
+        run: bash scripts/docker_test.sh
