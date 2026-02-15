@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズ4
-- 対象項目: gh-workflow skill 新規作成と運用ガイド整備
-- 担当日時: 2026-02-15 16:10
+- 対象項目: subagent-manager-workflow skill 新規作成と運用ガイド整備
+- 担当日時: 2026-02-15 12:09
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -48,6 +48,7 @@
 - 2026-02-15: `scripts/docker_test.sh` と `Dockerfile` を更新し、Dockerテストで `tests/e2e` を含む `tests/unit` `tests/integration` `tests/e2e` を実行する導線に変更。
 - 2026-02-15: `.codex/skills/gh-workflow/` を新規作成し、`Sigumaa/calt` 限定の `gh workflow`/`gh run` 運用手順・禁止事項・トリガーテストログを整備。`AGENTS.md` に利用タイミングと非適用条件を追記。
 - 2026-02-15: `gh-workflow` skill に push直後監視手順（`gh run list --limit 1` → `gh run watch <run-id> --exit-status`）と quick_validate のグローバル実在パスを追加し、`AGENTS.md` とトリガー検証ログを更新。
+- 2026-02-15: `/home/shiyui/.codex/skills/subagent-manager-workflow/` を新規作成し、PM専任の委譲運用手順・禁止事項・品質ゲートとトリガー検証ログを整備。`AGENTS.md` に利用タイミングと非適用条件を追記。
 
 ## 次アクション（最大3つ）
 1. `gh-workflow` skill を実運用で適用し、`references/trigger-test-log.md` に追加ケースを蓄積する
