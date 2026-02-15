@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "title": "workspace overview read-only plan",
+  "session_goal": "inspect workspace structure and key document using read-only tools",
+  "steps": [
+    {
+      "id": "step_list_root",
+      "title": "List workspace root",
+      "tool": "list_dir",
+      "risk": "low",
+      "inputs": {
+        "path": "."
+      },
+      "timeout_sec": 30
+    },
+    {
+      "id": "step_list_src",
+      "title": "List source directory",
+      "tool": "list_dir",
+      "risk": "low",
+      "inputs": {
+        "path": "src"
+      },
+      "timeout_sec": 30
+    },
+    {
+      "id": "step_read_readme",
+      "title": "Read project README",
+      "tool": "read_file",
+      "risk": "low",
+      "inputs": {
+        "path": "readme.md"
+      },
+      "timeout_sec": 30
+    }
+  ]
+}

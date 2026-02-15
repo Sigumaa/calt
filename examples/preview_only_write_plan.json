@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "title": "preview-only write plan",
+  "session_goal": "preview write operations without applying any filesystem changes",
+  "steps": [
+    {
+      "id": "step_preview_write_file",
+      "title": "Preview file creation",
+      "tool": "write_file_preview",
+      "risk": "low",
+      "inputs": {
+        "path": "notes/preview_only_example.txt",
+        "content": "Preview-only sample file\\nNo apply step is executed.\\n"
+      },
+      "timeout_sec": 30
+    },
+    {
+      "id": "step_preview_patch",
+      "title": "Preview patch for a new file",
+      "tool": "apply_patch",
+      "risk": "low",
+      "inputs": {
+        "mode": "preview",
+        "patch": "diff --git a/notes/preview_patch_example.txt b/notes/preview_patch_example.txt\\nnew file mode 100644\\n--- /dev/null\\n+++ b/notes/preview_patch_example.txt\\n@@ -0,0 +1,3 @@\\n+Preview-only patch example\\n+No file is written when mode is preview.\\n+calt practical sample\\n"
+      },
+      "timeout_sec": 30
+    }
+  ]
+}

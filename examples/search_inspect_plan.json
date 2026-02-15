@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "title": "search and inspect plan",
+  "session_goal": "search key terms and inspect relevant source files safely",
+  "steps": [
+    {
+      "id": "step_search_readme_keywords",
+      "title": "Search README for CLI keywords",
+      "tool": "run_shell_readonly",
+      "risk": "low",
+      "inputs": {
+        "command": "rg -n \"quickstart|wizard|explain\" readme.md"
+      },
+      "timeout_sec": 20
+    },
+    {
+      "id": "step_find_cli_files",
+      "title": "Find CLI files",
+      "tool": "run_shell_readonly",
+      "risk": "low",
+      "inputs": {
+        "command": "find src/calt/cli -maxdepth 2 -type f"
+      },
+      "timeout_sec": 20
+    },
+    {
+      "id": "step_read_cli_app",
+      "title": "Read CLI app implementation",
+      "tool": "read_file",
+      "risk": "low",
+      "inputs": {
+        "path": "src/calt/cli/app.py"
+      },
+      "timeout_sec": 30
+    }
+  ]
+}

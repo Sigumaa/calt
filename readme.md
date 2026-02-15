@@ -58,6 +58,28 @@ uv run calt explain "$SESSION_ID"
 uv run calt explain "$SESSION_ID" --json
 ```
 
+## サンプルPlan一覧と実行例
+
+- `examples/sample_plan.json`: 最小のread-only 1step
+- `examples/workspace_overview_plan.json`: `list_dir` + `read_file` でワークスペース概要を確認
+- `examples/search_inspect_plan.json`: `run_shell_readonly` + `read_file` で検索と詳細確認
+- `examples/preview_only_write_plan.json`: `write_file_preview` / `apply_patch mode=preview` の非破壊プレビュー
+
+quickstart実行例:
+
+```bash
+uv run calt quickstart examples/workspace_overview_plan.json --goal "workspace overview"
+uv run calt quickstart examples/search_inspect_plan.json --goal "search and inspect"
+uv run calt quickstart examples/preview_only_write_plan.json --goal "preview only"
+```
+
+wizard実行例:
+
+```bash
+uv run calt wizard run
+# plan file promptで examples/preview_only_write_plan.json などを入力
+```
+
 ## Next Roadmap
 
 - Safety Baseline（計画中）
