@@ -1,9 +1,9 @@
 # PLAN_PROGRESS
 
 ## 現在の実施対象
-- 対象フェーズ: フェーズ4
-- 対象項目: DockerテストCIの `sample_plan` 参照失敗修正
-- 担当日時: 2026-02-15 13:20
+- 対象フェーズ: フェーズA
+- 対象項目: 安全ポリシー層 + Docker必須実行ガード
+- 担当日時: 2026-02-15 14:00
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -55,8 +55,9 @@
 - 2026-02-15: `src/calt/cli/display.py` を追加し、`session create` `plan import` `step execute` `logs search` を見やすい表示へ更新。`calt guide` と `calt flow run`、関連テスト、`readme.md` を追加更新。
 - 2026-02-15: daemon検索のevent_type対応とCLI `quickstart`/`doctor` 導線（README・テスト含む）を統合し、`uv run pytest -q` 92件成功と `pre-commit run --all-files` 通過を確認。
 - 2026-02-15: Docker実行時に `/app/examples/sample_plan.json` が参照できないCI失敗へ対応し、`Dockerfile` に `examples/` コピーを追加。
+- 2026-02-15: MVP完了後の拡張計画v2を策定し、優先順を安全→CLIとして再起動。
 
 ## 次アクション（最大3つ）
-1. `calt flow run` の失敗時表示（中断理由・再実行導線）を必要に応じて拡張する
-2. CLIの他コマンド表示（`artifacts` `tools`）の表形式を運用フィードバックで調整する
-3. ガイド表示をDiscord運用手順と整合させる
+1. session mode=dry_run と high-risk確認フラグのAPI/CLI仕様を確定
+2. strict/dev安全プロファイルの実装とテスト項目を定義
+3. wizard run の最小対話フロー仕様を確定

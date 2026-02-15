@@ -44,3 +44,9 @@ uv run calt step approve "$SESSION_ID" step_list_workspace --approved-by cli --s
 uv run calt step execute "$SESSION_ID" step_list_workspace
 uv run calt logs search "$SESSION_ID" --query "step_executed"
 ```
+
+## Next Roadmap
+
+- Safety Baseline（計画中）
+- Guided CLI（計画中）
+- 実用サンプルPlan（計画中）
