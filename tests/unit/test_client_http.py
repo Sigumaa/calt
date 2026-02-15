@@ -29,7 +29,7 @@ async def test_daemon_client_builds_expected_requests() -> None:
         token="test-token",
         transport=transport,
     ) as client:
-        await client.create_session(goal="demo", mode="dry_run")
+        await client.create_session(goal="demo", mode="dry_run", safety_profile="dev")
         await client.import_plan(
             "session-1",
             version=2,
@@ -67,7 +67,11 @@ async def test_daemon_client_builds_expected_requests() -> None:
         ("GET", "/api/v1/tools/read_file/permissions"),
     ]
     assert all(req.headers["Authorization"] == "Bearer test-token" for req in captured_requests)
-    assert _decode_json_body(captured_requests[0]) == {"goal": "demo", "mode": "dry_run"}
+    assert _decode_json_body(captured_requests[0]) == {
+        "goal": "demo",
+        "mode": "dry_run",
+        "safety_profile": "dev",
+    }
     assert _decode_json_body(captured_requests[1]) == {
         "version": 2,
         "title": "imported",

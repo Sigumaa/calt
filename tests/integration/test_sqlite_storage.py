@@ -109,7 +109,7 @@ def test_connect_sqlite_creates_parent_directory_when_missing(tmp_path: Path) ->
         connection.close()
 
 
-def test_initialize_storage_adds_mode_column_for_legacy_sessions_table() -> None:
+def test_initialize_storage_adds_mode_and_safety_profile_columns_for_legacy_sessions_table() -> None:
     connection = connect_sqlite(":memory:")
     try:
         connection.execute(
@@ -128,5 +128,6 @@ def test_initialize_storage_adds_mode_column_for_legacy_sessions_table() -> None
             row["name"] for row in connection.execute("PRAGMA table_info(sessions)").fetchall()
         }
         assert "mode" in columns
+        assert "safety_profile" in columns
     finally:
         connection.close()

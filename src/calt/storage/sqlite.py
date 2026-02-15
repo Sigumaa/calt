@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     goal TEXT NOT NULL DEFAULT '',
     mode TEXT NOT NULL DEFAULT 'normal',
+    safety_profile TEXT NOT NULL DEFAULT 'strict',
     status TEXT NOT NULL DEFAULT 'pending',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -203,9 +204,22 @@ def _ensure_sessions_mode_column(connection: sqlite3.Connection) -> None:
     connection.execute("ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'normal'")
 
 
+def _ensure_sessions_safety_profile_column(connection: sqlite3.Connection) -> None:
+    columns = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in connection.execute("PRAGMA table_info(sessions)").fetchall()
+    }
+    if "safety_profile" in columns:
+        return
+    connection.execute(
+        "ALTER TABLE sessions ADD COLUMN safety_profile TEXT NOT NULL DEFAULT 'strict'"
+    )
+
+
 def initialize_storage(connection: sqlite3.Connection) -> None:
     connection.executescript(SCHEMA_SQL)
     _ensure_sessions_mode_column(connection)
+    _ensure_sessions_safety_profile_column(connection)
 
 
 def init_sqlite(database: str | Path) -> sqlite3.Connection:

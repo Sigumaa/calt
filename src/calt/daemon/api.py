@@ -9,7 +9,7 @@ from typing import Any, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
-from calt.core import Run, Session, SessionMode, WorkflowStatus, transition_run
+from calt.core import Run, SafetyProfile, Session, SessionMode, WorkflowStatus, transition_run
 from calt.runtime import StepExecutor, StepRunResult
 from calt.storage import connect_sqlite, initialize_storage
 
@@ -26,6 +26,7 @@ DEFAULT_TOOLS: tuple[tuple[str, str, str], ...] = (
 class CreateSessionRequest(BaseModel):
     goal: str | None = None
     mode: Literal["normal", "dry_run"] = "normal"
+    safety_profile: Literal["strict", "dev"] = "strict"
 
 
 class PlanStepInput(BaseModel):
@@ -87,7 +88,7 @@ def _fetch_session_or_404(
 ) -> sqlite3.Row:
     row = connection.execute(
         """
-        SELECT id, goal, mode, status, created_at, updated_at
+        SELECT id, goal, mode, safety_profile, status, created_at, updated_at
         FROM sessions
         WHERE id = ?
         """,
@@ -351,18 +352,23 @@ def create_app(
         payload: CreateSessionRequest,
         _: str = Depends(_require_bearer_token),
     ) -> dict[str, Any]:
-        session = Session(goal=payload.goal, mode=payload.mode)
+        session = Session(
+            goal=payload.goal,
+            mode=payload.mode,
+            safety_profile=payload.safety_profile,
+        )
         connection = connect_sqlite(database_path)
         try:
             connection.execute(
                 """
-                INSERT INTO sessions (id, goal, mode, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO sessions (id, goal, mode, safety_profile, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session.id,
                     session.goal or "",
                     session.mode.value,
+                    session.safety_profile.value,
                     session.status.value,
                     session.created_at.isoformat(),
                     session.updated_at.isoformat(),
@@ -373,6 +379,13 @@ def create_app(
                 session_id=session.id,
                 event_type="session_created",
                 summary="session created",
+                payload_text=json.dumps(
+                    {
+                        "mode": session.mode.value,
+                        "safety_profile": session.safety_profile.value,
+                    },
+                    ensure_ascii=True,
+                ),
             )
             _ensure_session_paths(data_root_path, session.id)
             connection.commit()
@@ -383,6 +396,7 @@ def create_app(
             "id": session.id,
             "goal": session.goal,
             "mode": session.mode.value,
+            "safety_profile": session.safety_profile.value,
             "status": session.status.value,
             "plan_version": session.plan_version,
             "created_at": session.created_at.isoformat(),
@@ -412,6 +426,7 @@ def create_app(
             "id": row["id"],
             "goal": row["goal"] or None,
             "mode": row["mode"] or SessionMode.normal.value,
+            "safety_profile": row["safety_profile"] or SafetyProfile.strict.value,
             "status": row["status"],
             "needs_replan": row["status"] == WorkflowStatus.failed.value,
             "plan_version": version_row["current_plan_version"],
@@ -724,7 +739,21 @@ def create_app(
             step_risk = str(step_risk_value).lower()
             if step_risk not in {"low", "medium", "high"}:
                 step_risk = "low"
-            if step_risk == "high" and not confirm_high_risk:
+
+            step_inputs, timeout_sec = _parse_step_payload(step_row["payload_json"])
+            workspace_root, artifacts_root = _ensure_session_paths(data_root_path, session_id)
+            runtime_inputs = dict(step_inputs)
+            runtime_inputs.setdefault("workspace_root", str(workspace_root))
+            session_mode = str(session_row["mode"] or SessionMode.normal.value)
+            session_safety_profile = str(
+                session_row["safety_profile"] or SafetyProfile.strict.value
+            )
+
+            if (
+                session_safety_profile == SafetyProfile.strict.value
+                and step_risk == "high"
+                and not confirm_high_risk
+            ):
                 detail = "high-risk step requires confirm_high_risk=true"
                 _insert_event(
                     connection,
@@ -736,6 +765,7 @@ def create_app(
                             "reason": "high_risk_confirmation_required",
                             "step_id": step_id,
                             "risk": step_risk,
+                            "safety_profile": session_safety_profile,
                         },
                         ensure_ascii=True,
                     ),
@@ -746,11 +776,6 @@ def create_app(
                     detail=detail,
                 )
 
-            step_inputs, timeout_sec = _parse_step_payload(step_row["payload_json"])
-            workspace_root, artifacts_root = _ensure_session_paths(data_root_path, session_id)
-            runtime_inputs = dict(step_inputs)
-            runtime_inputs.setdefault("workspace_root", str(workspace_root))
-            session_mode = str(session_row["mode"] or SessionMode.normal.value)
             is_destructive_apply = step_row["tool_name"] == "write_file_apply" or (
                 step_row["tool_name"] == "apply_patch" and runtime_inputs.get("mode") == "apply"
             )
@@ -767,6 +792,7 @@ def create_app(
                             "step_id": step_id,
                             "tool": step_row["tool_name"],
                             "mode": session_mode,
+                            "safety_profile": session_safety_profile,
                         },
                         ensure_ascii=True,
                     ),
@@ -786,12 +812,15 @@ def create_app(
             transition_run(run, WorkflowStatus.awaiting_step_approval)
             transition_run(run, WorkflowStatus.running)
 
-            gate_error = _preview_gate_error(
-                connection,
-                session_id=session_id,
-                tool_name=step_row["tool_name"],
-                step_inputs=runtime_inputs,
-            )
+            if session_safety_profile == SafetyProfile.strict.value:
+                gate_error = _preview_gate_error(
+                    connection,
+                    session_id=session_id,
+                    tool_name=step_row["tool_name"],
+                    step_inputs=runtime_inputs,
+                )
+            else:
+                gate_error = None
             if gate_error is None:
                 runtime_result = step_executor.execute(
                     tool=step_row["tool_name"],
@@ -932,6 +961,7 @@ def create_app(
                 payload_text=json.dumps(
                     {
                         "tool": step_row["tool_name"],
+                        "safety_profile": session_safety_profile,
                         "runtime_status": runtime_result.status,
                         "output": runtime_result.output,
                         "error": runtime_result.error,

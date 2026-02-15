@@ -29,6 +29,7 @@ class DaemonClientProtocol(Protocol):
         goal: str | None = None,
         *,
         mode: Literal["normal", "dry_run"] = "normal",
+        safety_profile: Literal["strict", "dev"] = "strict",
     ) -> dict[str, Any]: ...
 
     async def import_plan(
@@ -901,13 +902,22 @@ def build_app(client_factory: ClientFactory | None = None) -> typer.Typer:
             "--mode",
             help="Session mode.",
         ),
+        safety_profile: Literal["strict", "dev"] = typer.Option(
+            "strict",
+            "--safety-profile",
+            help="Safety profile.",
+        ),
         json_output: bool = typer.Option(False, "--json", help="Output raw JSON payload."),
     ) -> None:
         settings = _require_settings(ctx)
         _run_and_print(
             settings,
             resolved_client_factory,
-            lambda client: client.create_session(goal=goal, mode=mode),
+            lambda client: client.create_session(
+                goal=goal,
+                mode=mode,
+                safety_profile=safety_profile,
+            ),
             as_json=json_output,
             renderer=_render_session_create_payload,
         )

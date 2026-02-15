@@ -28,6 +28,11 @@ class SessionMode(str, Enum):
     dry_run = "dry_run"
 
 
+class SafetyProfile(str, Enum):
+    strict = "strict"
+    dev = "dev"
+
+
 TERMINAL_STATUSES: frozenset[WorkflowStatus] = frozenset(
     {
         WorkflowStatus.succeeded,
@@ -42,6 +47,7 @@ class Session(BaseModel):
     id: str = Field(default_factory=lambda: f"session_{uuid4().hex[:12]}")
     goal: str | None = None
     mode: SessionMode = SessionMode.normal
+    safety_profile: SafetyProfile = SafetyProfile.strict
     status: WorkflowStatus = WorkflowStatus.pending
     plan_version: int | None = None
     created_at: datetime = Field(default_factory=utc_now)

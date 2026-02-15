@@ -36,15 +36,19 @@ class MockDaemonClient:
         goal: str | None = None,
         *,
         mode: str = "normal",
+        safety_profile: str = "strict",
     ) -> dict[str, Any]:
         record_payload: dict[str, Any] = {"goal": goal}
         if mode != "normal":
             record_payload["mode"] = mode
+        if safety_profile != "strict":
+            record_payload["safety_profile"] = safety_profile
         payload = self._record("create_session", **record_payload)
         payload.update(
             {
                 "id": "session-1",
                 "mode": mode,
+                "safety_profile": safety_profile,
                 "status": "awaiting_plan_approval",
                 "plan_version": None,
                 "created_at": "2026-02-15T00:00:00Z",
@@ -217,6 +221,18 @@ def test_session_create_command_with_dry_run_mode(
     payload = _parse_stdout(result)
     assert payload["method"] == "create_session"
     assert payload["mode"] == "dry_run"
+
+
+def test_session_create_command_with_dev_safety_profile(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, client, _ = cli_fixture
+    result = _invoke(app, ["session", "create", "--goal", "demo", "--safety-profile", "dev"])
+    assert result.exit_code == 0
+    assert client.calls == [("create_session", {"goal": "demo", "safety_profile": "dev"})]
+    payload = _parse_stdout(result)
+    assert payload["method"] == "create_session"
+    assert payload["safety_profile"] == "dev"
 
 
 def test_plan_import_command(

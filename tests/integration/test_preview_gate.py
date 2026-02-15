@@ -37,11 +37,16 @@ async def client(app) -> AsyncIterator[AsyncClient]:
         yield async_client
 
 
-async def _create_session(client: AsyncClient, *, mode: str = "normal") -> str:
+async def _create_session(
+    client: AsyncClient,
+    *,
+    mode: str = "normal",
+    safety_profile: str = "strict",
+) -> str:
     response = await client.post(
         "/api/v1/sessions",
         headers=AUTH_HEADERS,
-        json={"goal": "preview gate", "mode": mode},
+        json={"goal": "preview gate", "mode": mode, "safety_profile": safety_profile},
     )
     assert response.status_code == 200
     return response.json()["id"]
@@ -139,6 +144,40 @@ async def test_write_apply_without_preview_is_rejected_and_recorded(
         assert "preview gate rejected" in (event_row["payload_text"] or "")
     finally:
         connection.close()
+
+
+@pytest.mark.anyio
+async def test_dev_profile_skips_preview_gate_for_write_apply_without_preview(
+    client: AsyncClient,
+) -> None:
+    session_id = await _create_session(client, safety_profile="dev")
+    plan_payload = {
+        "version": 1,
+        "title": "dev profile no preview gate",
+        "session_goal": "skip preview gate in dev profile",
+        "steps": [
+            {
+                "id": "step_apply",
+                "title": "apply without preview",
+                "tool": "write_file_apply",
+                "inputs": {"path": "memo.txt", "content": "after\n"},
+                "timeout_sec": 30,
+            }
+        ],
+    }
+    await _import_plan(client, session_id, plan_payload)
+    await _approve_plan(client, session_id)
+    await _approve_step(client, session_id, "step_apply")
+
+    execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_apply/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert execute.status_code == 200
+    payload = execute.json()
+    assert payload["status"] == "failed"
+    assert "preview gate rejected" not in (payload["error"] or "")
+    assert "preview is required for write_file_apply" in (payload["error"] or "")
 
 
 @pytest.mark.anyio

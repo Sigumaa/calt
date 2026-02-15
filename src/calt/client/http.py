@@ -40,8 +40,9 @@ class DaemonApiClient:
         goal: str | None = None,
         *,
         mode: Literal["normal", "dry_run"] = "normal",
+        safety_profile: Literal["strict", "dev"] = "strict",
     ) -> dict[str, Any]:
-        payload: dict[str, Any] = {"mode": mode}
+        payload: dict[str, Any] = {"mode": mode, "safety_profile": safety_profile}
         if goal is not None:
             payload["goal"] = goal
         return await self._request("POST", "/api/v1/sessions", json=payload)

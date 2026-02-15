@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズA
-- 対象項目: 安全ポリシー層 + Docker必須実行ガード
-- 担当日時: 2026-02-15 14:00
+- 対象項目: strict/dev 安全プロファイル
+- 担当日時: 2026-02-15 15:20
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -57,8 +57,9 @@
 - 2026-02-15: Docker実行時に `/app/examples/sample_plan.json` が参照できないCI失敗へ対応し、`Dockerfile` に `examples/` コピーを追加。
 - 2026-02-15: MVP完了後の拡張計画v2を策定し、優先順を安全→CLIとして再起動。
 - 2026-02-15: フェーズA-1として `session mode`（`normal`/`dry_run`）をAPI/CLI/DBへ追加し、high-risk stepの `confirm_high_risk` 必須化と dry_run 時の apply 系実行拒否（`write_file_apply`, `apply_patch mode=apply`）を実装。統合/単体テストを更新。
+- 2026-02-15: フェーズA-2として `safety_profile`（`strict`/`dev`）をSessionモデル・SQLite・API・CLI・HTTP clientへ追加。`strict` は既存の high-risk confirm と preview gate を維持し、`dev` は当該2制約をスキップするよう `execute_step` を更新。`dry_run` の destructive apply 拒否はプロファイル非依存で維持。関連するunit/integrationテストを追加更新。
 
 ## 次アクション（最大3つ）
-1. strict/dev安全プロファイルの実装とテスト項目を定義
-2. strict/devの承認強度・実行制約差分をAPI/CLI仕様へ反映
-3. wizard run の最小対話フロー仕様を確定
+1. strict時のDocker必須実行ガード適用条件をAPI実行経路へ統合
+2. `wizard run` の最小対話フロー仕様を確定
+3. `explain` コマンドの出力項目（状態/根拠/次アクション）を定義
