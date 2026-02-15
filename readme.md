@@ -171,9 +171,3 @@ token未設定時の挙動:
 
 - 通常コマンドはHTTP呼び出し前に終了し、`CALT_DAEMON_TOKEN` の設定を促すエラーを返す。
 - `uv run calt doctor` は token を `FAIL` と表示し、token必須のAPI診断を `SKIP` と表示する。
-
-## Next Roadmap
-
-- Safety Baseline（実装済み）
-- Guided CLI（実装済み）
-- 実用サンプルPlan（実装済み）

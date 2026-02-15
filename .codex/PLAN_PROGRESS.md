@@ -70,8 +70,9 @@
 - 2026-02-15: `examples/c2_two_phase_apply_plan.json` と `examples/c3_needs_replan_plan.json` を追加し、`tests/unit/test_sample_plan_json.py` のサンプル検証を拡張。`readme.md` に参照構文と C-2/C-3 実行例を追記。
 - 2026-02-15: `readme.md` に `実行ログ例` セクションを追加し、`doctor` / `wizard run` / `explain` / C-2/C-3コマンド列 / token未設定時挙動を追記。
 - 2026-02-15: `readme.md` の `## Next Roadmap` セクションで 3件の `（計画中）` を `（実装済み）` に更新。
+- 2026-02-15: `readme.md` の `## Next Roadmap` から実装済み3項目を削除し、空セクションになったため見出しごと整理。
 
 ## 次アクション（最大3つ）
-1. C-2/C-3サンプルを使った実行ログ（`events search`）の具体例をREADMEへ追加
+1. C-2/C-3サンプルを使った実行ログ（`events search`）の具体例をREADMEへ追記
 2. step参照構文の配列インデックス対応要否を要件として確定
 3. `needs_replan` 時の再計画テンプレート例を `examples/` へ追加検討
