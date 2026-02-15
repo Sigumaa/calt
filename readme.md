@@ -22,13 +22,19 @@ uv run calt-daemon --db-path data/calt.sqlite3 --data-root data
 uv run calt guide
 ```
 
-4. 最短フローを実行
+4. 設定と主要API疎通を診断
 
 ```bash
-uv run calt flow run --goal "quickstart" examples/sample_plan.json
+uv run calt doctor
 ```
 
-5. 個別操作で実行する場合（JSON出力）
+5. 最短フローを実行
+
+```bash
+uv run calt quickstart examples/sample_plan.json --goal "quickstart"
+```
+
+6. 個別操作で実行する場合（JSON出力）
 
 ```bash
 SESSION_ID=$(uv run calt session create --goal "quickstart" --json | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')

@@ -53,6 +53,7 @@
 - 2026-02-15: `readme.md` に最短クイックスタートを整備し、`examples/sample_plan.json` と検証テスト `tests/unit/test_sample_plan_json.py` を追加。
 - 2026-02-15: `connect_sqlite` でDBファイル親ディレクトリを自動作成するよう修正し、未存在ディレクトリ配下でも接続できる回帰テストを追加。
 - 2026-02-15: `src/calt/cli/display.py` を追加し、`session create` `plan import` `step execute` `logs search` を見やすい表示へ更新。`calt guide` と `calt flow run`、関連テスト、`readme.md` を追加更新。
+- 2026-02-15: daemon検索のevent_type対応とCLI `quickstart`/`doctor` 導線（README・テスト含む）を統合し、`uv run pytest -q` 92件成功と `pre-commit run --all-files` 通過を確認。
 
 ## 次アクション（最大3つ）
 1. `calt flow run` の失敗時表示（中断理由・再実行導線）を必要に応じて拡張する

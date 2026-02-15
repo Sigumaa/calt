@@ -128,10 +128,24 @@ class MockDaemonClient:
         return self._record("list_artifacts", session_id=session_id)
 
     async def list_tools(self) -> dict[str, Any]:
-        return self._record("list_tools")
+        payload = self._record("list_tools")
+        payload["items"] = [
+            {
+                "tool_name": "list_dir",
+                "permission_profile": "readonly",
+                "enabled": True,
+            }
+        ]
+        return payload
 
     async def get_tool_permissions(self, tool_name: str) -> dict[str, Any]:
-        return self._record("get_tool_permissions", tool_name=tool_name)
+        return self._record(
+            "get_tool_permissions",
+            tool_name=tool_name,
+            permission_profile="readonly",
+            enabled=True,
+            description="list directory entries",
+        )
 
 
 class MockClientFactory:
@@ -309,7 +323,8 @@ def test_tools_permissions_command(cli_fixture: tuple[Any, MockDaemonClient, Moc
     app, client, _ = cli_fixture
     result = _invoke(app, ["tools", "permissions", "read_file"])
     assert result.exit_code == 0
-    assert client.calls == [("get_tool_permissions", {"tool_name": "read_file"})]
+    assert client.calls[0][0] == "get_tool_permissions"
+    assert client.calls[0][1]["tool_name"] == "read_file"
     assert _parse_stdout(result)["method"] == "get_tool_permissions"
 
 
@@ -318,7 +333,146 @@ def test_guide_command_shows_short_flow(cli_fixture: tuple[Any, MockDaemonClient
     result = _invoke(app, ["guide"], json_output=False)
     assert result.exit_code == 0
     assert "最短操作フロー" in result.stdout
-    assert "calt flow run --goal <goal> <plan_file>" in result.stdout
+    assert "calt quickstart <plan_file> --goal <goal>" in result.stdout
+
+
+def test_quickstart_calls_client_in_order(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+    tmp_path: Path,
+) -> None:
+    app, client, _ = cli_fixture
+    plan_file = tmp_path / "quickstart_plan.json"
+    plan_file.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "title": "quickstart plan",
+                "steps": [
+                    {"id": "step_001", "title": "first", "tool": "list_dir", "inputs": {}},
+                    {"id": "step_002", "title": "second", "tool": "list_dir", "inputs": {}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _invoke(app, ["quickstart", str(plan_file), "--goal", "ship"])
+    assert result.exit_code == 0
+    assert client.calls == [
+        ("create_session", {"goal": "ship"}),
+        (
+            "import_plan",
+            {
+                "session_id": "session-1",
+                "version": 1,
+                "title": "quickstart plan",
+                "steps": [
+                    {"id": "step_001", "title": "first", "tool": "list_dir", "inputs": {}},
+                    {"id": "step_002", "title": "second", "tool": "list_dir", "inputs": {}},
+                ],
+                "session_goal": "ship",
+            },
+        ),
+        (
+            "approve_plan",
+            {
+                "session_id": "session-1",
+                "version": 1,
+                "approved_by": "cli",
+                "source": "cli",
+                "approved": True,
+            },
+        ),
+        (
+            "approve_step",
+            {
+                "session_id": "session-1",
+                "step_id": "step_001",
+                "approved_by": "cli",
+                "source": "cli",
+                "approved": True,
+            },
+        ),
+        ("execute_step", {"session_id": "session-1", "step_id": "step_001"}),
+        (
+            "approve_step",
+            {
+                "session_id": "session-1",
+                "step_id": "step_002",
+                "approved_by": "cli",
+                "source": "cli",
+                "approved": True,
+            },
+        ),
+        ("execute_step", {"session_id": "session-1", "step_id": "step_002"}),
+    ]
+    payload = _parse_stdout(result)
+    assert payload["session_id"] == "session-1"
+    assert [item["step_id"] for item in payload["step_results"]] == ["step_001", "step_002"]
+
+
+def test_quickstart_uses_plan_session_goal_when_goal_is_omitted(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+    tmp_path: Path,
+) -> None:
+    app, client, _ = cli_fixture
+    plan_file = tmp_path / "quickstart_plan_goal.json"
+    plan_file.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "title": "quickstart plan with goal",
+                "session_goal": "from-plan",
+                "steps": [{"id": "step_001", "title": "first", "tool": "list_dir", "inputs": {}}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _invoke(app, ["quickstart", str(plan_file)])
+    assert result.exit_code == 0
+    assert client.calls[0] == ("create_session", {"goal": "from-plan"})
+    assert client.calls[1][0] == "import_plan"
+    assert client.calls[1][1]["session_goal"] == "from-plan"
+
+
+def test_doctor_command_runs_diagnostics(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, client, _ = cli_fixture
+    result = _invoke(app, ["doctor"])
+    assert result.exit_code == 0
+    assert [method for method, _ in client.calls] == [
+        "list_tools",
+        "get_tool_permissions",
+        "create_session",
+        "import_plan",
+        "approve_plan",
+        "approve_step",
+        "execute_step",
+        "search_events",
+        "list_artifacts",
+        "stop_session",
+    ]
+    payload = _parse_stdout(result)
+    checks = {item["name"]: item["status"] for item in payload["checks"]}
+    assert payload["ok"] is True
+    assert checks["base_url"] == "pass"
+    assert checks["token"] == "pass"
+    assert checks["session_create"] == "pass"
+    assert checks["step_execute"] == "pass"
+
+
+def test_doctor_command_fails_when_token_is_empty(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, _, _ = cli_fixture
+    result = runner.invoke(app, ["--base-url", "http://daemon.local", "--token", "", "doctor", "--json"])
+    assert result.exit_code == 1
+    payload = _parse_stdout(result)
+    checks = {item["name"]: item["status"] for item in payload["checks"]}
+    assert payload["ok"] is False
+    assert checks["token"] == "fail"
 
 
 def test_flow_run_calls_client_in_order(

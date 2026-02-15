@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -26,8 +27,12 @@ DEFAULT_PLAN_PAYLOAD = {
 
 
 @pytest.fixture
-def app(tmp_path: Path):
-    database_path = tmp_path / "daemon.sqlite3"
+def database_path(tmp_path: Path) -> Path:
+    return tmp_path / "daemon.sqlite3"
+
+
+@pytest.fixture
+def app(database_path: Path):
     return create_app(database_path)
 
 
@@ -132,7 +137,7 @@ async def test_execute_step_records_events_and_artifacts(client: AsyncClient) ->
     events = await client.get(
         f"/api/v1/sessions/{session_id}/events/search",
         headers=AUTH_HEADERS,
-        params={"q": "list_dir"},
+        params={"q": "step_executed"},
     )
     assert events.status_code == 200
     event_items = events.json()["items"]
@@ -146,6 +151,48 @@ async def test_execute_step_records_events_and_artifacts(client: AsyncClient) ->
     artifact_items = artifacts.json()["items"]
     assert len(artifact_items) == 1
     assert artifact_items[0]["path"].startswith(f"data/sessions/{session_id}/artifacts/")
+
+
+@pytest.mark.anyio
+async def test_search_events_includes_event_type_in_like_fallback(
+    client: AsyncClient,
+    database_path: Path,
+) -> None:
+    session_id = await _create_session(client)
+    await _import_plan(client, session_id)
+
+    approve_plan = await client.post(
+        f"/api/v1/sessions/{session_id}/plans/1/approve",
+        headers=AUTH_HEADERS,
+        json={"approved_by": "user_1", "source": "integration"},
+    )
+    assert approve_plan.status_code == 200
+
+    approve_step = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_001/approve",
+        headers=AUTH_HEADERS,
+        json={"approved_by": "user_1", "source": "integration"},
+    )
+    assert approve_step.status_code == 200
+
+    execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_001/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert execute.status_code == 200
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute("DROP TABLE events_fts")
+        connection.commit()
+
+    events = await client.get(
+        f"/api/v1/sessions/{session_id}/events/search",
+        headers=AUTH_HEADERS,
+        params={"q": "step_executed"},
+    )
+    assert events.status_code == 200
+    event_items = events.json()["items"]
+    assert any(item["event_type"] == "step_executed" for item in event_items)
 
 
 @pytest.mark.anyio

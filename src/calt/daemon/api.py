@@ -934,6 +934,7 @@ def create_app(
         try:
             _fetch_session_or_404(connection, session_id)
             if q:
+                like_pattern = f"%{q}%"
                 try:
                     rows = connection.execute(
                         """
@@ -948,22 +949,21 @@ def create_app(
                         FROM events AS e
                         INNER JOIN events_fts ON events_fts.rowid = e.id
                         WHERE e.session_id = ?
-                          AND events_fts MATCH ?
+                          AND (events_fts MATCH ? OR e.event_type LIKE ?)
                         ORDER BY e.id DESC
                         """,
-                        (session_id, q),
+                        (session_id, q, like_pattern),
                     ).fetchall()
                 except sqlite3.OperationalError:
-                    like_pattern = f"%{q}%"
                     rows = connection.execute(
                         """
                         SELECT id, event_type, summary, payload_text, source, user_id, created_at
                         FROM events
                         WHERE session_id = ?
-                          AND (summary LIKE ? OR payload_text LIKE ?)
+                          AND (summary LIKE ? OR payload_text LIKE ? OR event_type LIKE ?)
                         ORDER BY id DESC
                         """,
-                        (session_id, like_pattern, like_pattern),
+                        (session_id, like_pattern, like_pattern, like_pattern),
                     ).fetchall()
             else:
                 rows = connection.execute(

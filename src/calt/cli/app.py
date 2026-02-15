@@ -316,8 +316,7 @@ def _render_tool_permissions_payload(payload: dict[str, Any]) -> str:
     )
 
 
-def _render_flow_run_payload(payload: dict[str, Any]) -> str:
-    step_results = payload.get("step_results")
+def _collect_step_result_rows(step_results: Any) -> tuple[list[list[Any]], int]:
     rows: list[list[Any]] = []
     succeeded = 0
     if isinstance(step_results, list):
@@ -336,9 +335,15 @@ def _render_flow_run_payload(payload: dict[str, Any]) -> str:
                     _truncate(str(result.get("error", "-"))),
                 ]
             )
+    return rows, succeeded
+
+
+def _render_step_summary_payload(payload: dict[str, Any], *, summary_title: str) -> str:
+    step_results = payload.get("step_results")
+    rows, succeeded = _collect_step_result_rows(step_results)
 
     summary = render_kv_panel(
-        "Flow Run Summary",
+        summary_title,
         [
             ("Session ID", payload.get("session_id")),
             ("Plan Version", payload.get("plan_version")),
@@ -361,14 +366,59 @@ def _render_flow_run_payload(payload: dict[str, Any]) -> str:
     )
 
 
+def _render_flow_run_payload(payload: dict[str, Any]) -> str:
+    return _render_step_summary_payload(payload, summary_title="Flow Run Summary")
+
+
+def _render_quickstart_payload(payload: dict[str, Any]) -> str:
+    return _render_step_summary_payload(payload, summary_title="Quickstart Summary")
+
+
+def _render_doctor_payload(payload: dict[str, Any]) -> str:
+    counts_raw = payload.get("counts")
+    counts = counts_raw if isinstance(counts_raw, dict) else {}
+    checks_raw = payload.get("checks")
+    rows: list[list[Any]] = []
+    if isinstance(checks_raw, list):
+        for check in checks_raw:
+            if not isinstance(check, dict):
+                continue
+            rows.append(
+                [
+                    check.get("name"),
+                    str(check.get("status", "unknown")).upper(),
+                    _truncate(str(check.get("detail", "-")), limit=100),
+                ]
+            )
+
+    summary = render_kv_panel(
+        "Doctor Summary",
+        [
+            ("Overall", "PASS" if payload.get("ok") else "FAIL"),
+            ("PASS", counts.get("pass", 0)),
+            ("FAIL", counts.get("fail", 0)),
+            ("WARN", counts.get("warn", 0)),
+            ("SKIP", counts.get("skip", 0)),
+        ],
+    )
+    if not rows:
+        return summary
+    return compose_sections(
+        [
+            summary,
+            render_table("Checks", ["Name", "Status", "Detail"], rows),
+        ]
+    )
+
+
 def _render_guide_text() -> str:
     return compose_sections(
         [
             render_kv_panel(
                 "最短操作フロー",
                 [
-                    ("目的", "goalとplan fileだけで実行する"),
-                    ("推奨コマンド", "calt flow run"),
+                    ("目的", "疎通確認とplan実行を最短で終える"),
+                    ("推奨コマンド", "calt doctor / calt quickstart"),
                 ],
             ),
             render_table(
@@ -376,9 +426,9 @@ def _render_guide_text() -> str:
                 ["Step", "Command"],
                 [
                     ["1", "calt guide"],
-                    ["2", "calt flow run --goal <goal> <plan_file>"],
-                    ["3", "calt logs search <session_id> --query step_executed"],
-                    ["4", "必要時: calt logs search <session_id> --json"],
+                    ["2", "calt doctor"],
+                    ["3", "calt quickstart <plan_file> --goal <goal>"],
+                    ["4", "必要時: calt logs search <session_id> --query step_executed"],
                 ],
             ),
         ]
@@ -492,6 +542,238 @@ async def _run_flow_operation(
     }
 
 
+def _doctor_check(name: str, status: str, detail: str) -> dict[str, str]:
+    return {"name": name, "status": status, "detail": detail}
+
+
+def _doctor_error_detail(exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = exc.response.status_code
+        detail = exc.response.text.strip() or "request failed"
+        return f"HTTP {status_code}: {_truncate(detail, limit=100)}"
+    if isinstance(exc, httpx.HTTPError):
+        return _truncate(str(exc), limit=100)
+    return _truncate(f"{type(exc).__name__}: {exc}", limit=100)
+
+
+def _doctor_finalize_payload(checks: list[dict[str, str]]) -> dict[str, Any]:
+    counts = {"pass": 0, "fail": 0, "warn": 0, "skip": 0}
+    for check in checks:
+        status = check.get("status")
+        if status not in counts:
+            status = "fail"
+        counts[status] += 1
+    return {
+        "ok": counts["fail"] == 0,
+        "counts": counts,
+        "checks": checks,
+    }
+
+
+def _validate_base_url(base_url: str) -> tuple[bool, str]:
+    try:
+        parsed = httpx.URL(base_url)
+    except Exception as exc:  # noqa: BLE001
+        return False, f"invalid URL: {exc}"
+    if parsed.scheme not in ("http", "https"):
+        return False, f"unsupported scheme: {parsed.scheme or '(missing)'}"
+    if not parsed.host:
+        return False, "host is missing"
+    return True, f"{parsed.scheme}://{parsed.host}"
+
+
+async def _doctor_probe(
+    checks: list[dict[str, str]],
+    *,
+    name: str,
+    operation: Callable[[], Awaitable[dict[str, Any]]],
+    success_detail: str | Callable[[dict[str, Any]], str],
+) -> dict[str, Any] | None:
+    try:
+        payload = await operation()
+    except Exception as exc:  # noqa: BLE001
+        checks.append(_doctor_check(name, "fail", _doctor_error_detail(exc)))
+        return None
+    detail = success_detail(payload) if callable(success_detail) else success_detail
+    checks.append(_doctor_check(name, "pass", detail))
+    return payload
+
+
+async def _run_doctor_operation(
+    settings: CliSettings,
+    client_factory: ClientFactory,
+) -> dict[str, Any]:
+    checks: list[dict[str, str]] = []
+
+    base_url_ok, base_url_detail = _validate_base_url(settings.base_url)
+    checks.append(_doctor_check("base_url", "pass" if base_url_ok else "fail", base_url_detail))
+
+    token_ok = bool(settings.token.strip())
+    checks.append(_doctor_check("token", "pass" if token_ok else "fail", "configured" if token_ok else "empty"))
+
+    if not base_url_ok:
+        for name in (
+            "daemon_connectivity",
+            "tools_permissions",
+            "session_create",
+            "plan_import",
+            "plan_approve",
+            "step_approve",
+            "step_execute",
+            "logs_search",
+            "artifacts_list",
+            "session_stop",
+        ):
+            checks.append(_doctor_check(name, "skip", "base_url is invalid"))
+        return _doctor_finalize_payload(checks)
+
+    try:
+        async with client_factory(settings.base_url, settings.token) as client:
+            tools_payload = await _doctor_probe(
+                checks,
+                name="daemon_connectivity",
+                operation=client.list_tools,
+                success_detail=lambda payload: (
+                    f"tools endpoint reachable (items={len(payload.get('items', []))})"
+                    if isinstance(payload.get("items"), list)
+                    else "tools endpoint reachable"
+                ),
+            )
+
+            tool_name: str | None = None
+            if isinstance(tools_payload, dict):
+                items = tools_payload.get("items")
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, dict) and item.get("tool_name"):
+                            tool_name = str(item["tool_name"])
+                            break
+
+            if tool_name is None:
+                checks.append(_doctor_check("tools_permissions", "warn", "tool list is empty"))
+            else:
+                await _doctor_probe(
+                    checks,
+                    name="tools_permissions",
+                    operation=lambda: client.get_tool_permissions(tool_name),
+                    success_detail=f"{tool_name} permissions endpoint reachable",
+                )
+
+            session_payload = await _doctor_probe(
+                checks,
+                name="session_create",
+                operation=lambda: client.create_session(goal="doctor"),
+                success_detail=lambda payload: f"session_id={payload.get('id', '-')}",
+            )
+
+            session_id = ""
+            if isinstance(session_payload, dict):
+                session_id = str(session_payload.get("id") or "")
+
+            if not session_id:
+                for name in (
+                    "plan_import",
+                    "plan_approve",
+                    "step_approve",
+                    "step_execute",
+                    "logs_search",
+                    "artifacts_list",
+                    "session_stop",
+                ):
+                    checks.append(_doctor_check(name, "skip", "session_create failed"))
+                return _doctor_finalize_payload(checks)
+
+            doctor_version = 1
+            doctor_step_id = "step_doctor_ping"
+            doctor_steps = [
+                {
+                    "id": doctor_step_id,
+                    "title": "doctor ping",
+                    "tool": "list_dir",
+                    "inputs": {"path": "."},
+                }
+            ]
+
+            import_payload = await _doctor_probe(
+                checks,
+                name="plan_import",
+                operation=lambda: client.import_plan(
+                    session_id,
+                    version=doctor_version,
+                    title="doctor connectivity plan",
+                    steps=doctor_steps,
+                    session_goal="doctor",
+                ),
+                success_detail="plan import endpoint reachable",
+            )
+
+            if import_payload is None:
+                for name in ("plan_approve", "step_approve", "step_execute"):
+                    checks.append(_doctor_check(name, "skip", "plan_import failed"))
+            else:
+                await _doctor_probe(
+                    checks,
+                    name="plan_approve",
+                    operation=lambda: client.approve_plan(
+                        session_id,
+                        doctor_version,
+                        approved_by="doctor",
+                        source="doctor",
+                    ),
+                    success_detail="plan approve endpoint reachable",
+                )
+                await _doctor_probe(
+                    checks,
+                    name="step_approve",
+                    operation=lambda: client.approve_step(
+                        session_id,
+                        doctor_step_id,
+                        approved_by="doctor",
+                        source="doctor",
+                    ),
+                    success_detail="step approve endpoint reachable",
+                )
+                await _doctor_probe(
+                    checks,
+                    name="step_execute",
+                    operation=lambda: client.execute_step(session_id, doctor_step_id),
+                    success_detail=lambda payload: (
+                        f"step execute endpoint reachable (status={payload.get('status', '-')})"
+                    ),
+                )
+
+            await _doctor_probe(
+                checks,
+                name="logs_search",
+                operation=lambda: client.search_events(session_id, q="step"),
+                success_detail=lambda payload: (
+                    f"logs endpoint reachable (items={len(payload.get('items', []))})"
+                    if isinstance(payload.get("items"), list)
+                    else "logs endpoint reachable"
+                ),
+            )
+            await _doctor_probe(
+                checks,
+                name="artifacts_list",
+                operation=lambda: client.list_artifacts(session_id),
+                success_detail=lambda payload: (
+                    f"artifacts endpoint reachable (items={len(payload.get('items', []))})"
+                    if isinstance(payload.get("items"), list)
+                    else "artifacts endpoint reachable"
+                ),
+            )
+            await _doctor_probe(
+                checks,
+                name="session_stop",
+                operation=lambda: client.stop_session(session_id),
+                success_detail=lambda payload: f"stop endpoint reachable (status={payload.get('status', '-')})",
+            )
+    except Exception as exc:  # noqa: BLE001
+        checks.append(_doctor_check("daemon_connectivity", "fail", _doctor_error_detail(exc)))
+
+    return _doctor_finalize_payload(checks)
+
+
 def _run_and_print(
     settings: CliSettings,
     client_factory: ClientFactory,
@@ -546,6 +828,57 @@ def build_app(client_factory: ClientFactory | None = None) -> typer.Typer:
     @app.command("guide")
     def guide_command() -> None:
         typer.echo(_render_guide_text())
+
+    @app.command("quickstart")
+    def quickstart_command(
+        ctx: typer.Context,
+        plan_file: Path = typer.Argument(
+            ...,
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="Plan JSON file path.",
+        ),
+        goal: str | None = typer.Option(
+            None,
+            "--goal",
+            help="Session goal. Defaults to plan session_goal or 'quickstart'.",
+        ),
+        approved_by: str = typer.Option("cli", "--approved-by", help="Approver ID."),
+        source: str = typer.Option("cli", "--source", help="Approval source."),
+        json_output: bool = typer.Option(False, "--json", help="Output raw JSON payload."),
+    ) -> None:
+        version, title, steps, plan_session_goal = _load_plan_payload(plan_file)
+        resolved_goal = goal or plan_session_goal or "quickstart"
+        settings = _require_settings(ctx)
+        _run_and_print(
+            settings,
+            resolved_client_factory,
+            lambda client: _run_flow_operation(
+                client,
+                goal=resolved_goal,
+                version=version,
+                title=title,
+                steps=steps,
+                plan_session_goal=plan_session_goal,
+                approved_by=approved_by,
+                source=source,
+            ),
+            as_json=json_output,
+            renderer=_render_quickstart_payload,
+        )
+
+    @app.command("doctor")
+    def doctor_command(
+        ctx: typer.Context,
+        json_output: bool = typer.Option(False, "--json", help="Output raw JSON payload."),
+    ) -> None:
+        settings = _require_settings(ctx)
+        payload = anyio.run(_run_doctor_operation, settings, resolved_client_factory)
+        _print_payload(payload, as_json=json_output, renderer=_render_doctor_payload)
+        if not bool(payload.get("ok")):
+            raise typer.Exit(code=1)
 
     @session_app.command("create")
     def session_create(
