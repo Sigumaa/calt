@@ -71,8 +71,9 @@
 - 2026-02-15: `readme.md` に `実行ログ例` セクションを追加し、`doctor` / `wizard run` / `explain` / C-2/C-3コマンド列 / token未設定時挙動を追記。
 - 2026-02-15: `readme.md` の `## Next Roadmap` セクションで 3件の `（計画中）` を `（実装済み）` に更新。
 - 2026-02-15: `readme.md` の `## Next Roadmap` から実装済み3項目を削除し、空セクションになったため見出しごと整理。
+- 2026-02-15: `.codex/skills/plan-governed-subagent-workflow/` を新規作成し、`SKILL.md` `agents/openai.yaml` `references/trigger-test-log.md` を整備。`AGENTS.md` の Available skills・利用タイミング・非適用条件を更新し、新skill作成とAGENTS整合更新を実施。
 
 ## 次アクション（最大3つ）
-1. C-2/C-3サンプルを使った実行ログ（`events search`）の具体例をREADMEへ追記
-2. step参照構文の配列インデックス対応要否を要件として確定
-3. `needs_replan` 時の再計画テンプレート例を `examples/` へ追加検討
+1. 新skillを実運用タスクで適用し、トリガー誤判定の有無を確認
+2. `plan-governed-subagent-workflow` と `gh-workflow` の連携例を追加検討
+3. `.codex/PLAN_PROGRESS.md` 更新運用のテンプレ化可否を確認
