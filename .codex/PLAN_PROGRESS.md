@@ -2,7 +2,7 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズ4
-- 対象項目: CLIのリッチ表示化とガイド付き導線追加
+- 対象項目: DockerテストCIの `sample_plan` 参照失敗修正
 - 担当日時: 2026-02-15 13:20
 
 ## フェーズ進捗
@@ -54,6 +54,7 @@
 - 2026-02-15: `connect_sqlite` でDBファイル親ディレクトリを自動作成するよう修正し、未存在ディレクトリ配下でも接続できる回帰テストを追加。
 - 2026-02-15: `src/calt/cli/display.py` を追加し、`session create` `plan import` `step execute` `logs search` を見やすい表示へ更新。`calt guide` と `calt flow run`、関連テスト、`readme.md` を追加更新。
 - 2026-02-15: daemon検索のevent_type対応とCLI `quickstart`/`doctor` 導線（README・テスト含む）を統合し、`uv run pytest -q` 92件成功と `pre-commit run --all-files` 通過を確認。
+- 2026-02-15: Docker実行時に `/app/examples/sample_plan.json` が参照できないCI失敗へ対応し、`Dockerfile` に `examples/` コピーを追加。
 
 ## 次アクション（最大3つ）
 1. `calt flow run` の失敗時表示（中断理由・再実行導線）を必要に応じて拡張する
