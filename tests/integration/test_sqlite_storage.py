@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -94,3 +95,15 @@ def test_events_table_is_append_only(conn: sqlite3.Connection) -> None:
 
     with pytest.raises(sqlite3.IntegrityError, match="append-only"):
         conn.execute("DELETE FROM events WHERE id = 1")
+
+
+def test_connect_sqlite_creates_parent_directory_when_missing(tmp_path: Path) -> None:
+    database_path = tmp_path / "nested" / "storage" / "daemon.sqlite3"
+    assert not database_path.parent.exists()
+
+    connection = connect_sqlite(database_path)
+    try:
+        assert database_path.parent.exists()
+        assert database_path.exists()
+    finally:
+        connection.close()

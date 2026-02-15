@@ -51,6 +51,7 @@
 - 2026-02-15: `/home/shiyui/.codex/skills/subagent-manager-workflow/` を新規作成し、PM専任の委譲運用手順・禁止事項・品質ゲートとトリガー検証ログを整備。`AGENTS.md` に利用タイミングと非適用条件を追記。
 - 2026-02-15: `calt-daemon` エントリポイントを追加し、`create_app` を使う起動引数（db-path/data-root/host/port/reload）と単体テストを整備。
 - 2026-02-15: `readme.md` に最短クイックスタートを整備し、`examples/sample_plan.json` と検証テスト `tests/unit/test_sample_plan_json.py` を追加。
+- 2026-02-15: `connect_sqlite` でDBファイル親ディレクトリを自動作成するよう修正し、未存在ディレクトリ配下でも接続できる回帰テストを追加。
 
 ## 次アクション（最大3つ）
 1. `gh-workflow` skill を実運用で適用し、`references/trigger-test-log.md` に追加ケースを蓄積する

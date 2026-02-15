@@ -183,7 +183,9 @@ GROUP BY session_id, COALESCE(failure_reason, 'unknown');
 
 
 def connect_sqlite(database: str | Path) -> sqlite3.Connection:
-    connection = sqlite3.connect(str(database))
+    database_path = Path(database)
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    connection = sqlite3.connect(str(database_path))
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON;")
     connection.execute("PRAGMA busy_timeout = 5000;")
