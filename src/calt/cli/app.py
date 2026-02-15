@@ -70,6 +70,10 @@ class DaemonClientProtocol(Protocol):
 
     async def stop_session(self, session_id: str) -> dict[str, Any]: ...
 
+    async def get_session(self, session_id: str) -> dict[str, Any]: ...
+
+    async def get_plan(self, session_id: str, version: int) -> dict[str, Any]: ...
+
     async def search_events(self, session_id: str, q: str | None = None) -> dict[str, Any]: ...
 
     async def list_artifacts(self, session_id: str) -> dict[str, Any]: ...
@@ -426,6 +430,117 @@ def _render_doctor_payload(payload: dict[str, Any]) -> str:
             render_table("Checks", ["Name", "Status", "Detail"], rows),
         ]
     )
+
+
+def _render_explain_payload(payload: dict[str, Any]) -> str:
+    return render_kv_panel(
+        "Explain",
+        [
+            ("Session ID", payload.get("session_id")),
+            ("Status", payload.get("status")),
+            ("Needs Replan", payload.get("needs_replan")),
+            ("Next Command", payload.get("next_command")),
+            ("Reason", payload.get("reason")),
+        ],
+    )
+
+
+_FAILED_SESSION_STATUSES = frozenset({"failed", "cancelled", "skipped"})
+_UNAPPROVED_STEP_STATUSES = frozenset({"pending"})
+_APPROVED_NOT_EXECUTED_STEP_STATUSES = frozenset({"awaiting_step_approval"})
+
+
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _find_first_step_id_by_status(
+    steps: list[dict[str, Any]],
+    *,
+    statuses: frozenset[str],
+) -> str | None:
+    for step in steps:
+        step_status = str(step.get("status") or "")
+        if step_status not in statuses:
+            continue
+        step_id = step.get("id")
+        if step_id is None:
+            continue
+        return str(step_id)
+    return None
+
+
+async def _run_explain_operation(
+    client: DaemonClientProtocol,
+    *,
+    session_id: str,
+) -> dict[str, Any]:
+    session_payload = await client.get_session(session_id)
+
+    resolved_session_id = str(session_payload.get("id") or session_id)
+    status = str(session_payload.get("status") or "unknown")
+    needs_replan = bool(session_payload.get("needs_replan"))
+    plan_version = _coerce_int(session_payload.get("plan_version"))
+
+    plan_steps: list[dict[str, Any]] = []
+    if plan_version is not None:
+        plan_payload = await client.get_plan(resolved_session_id, plan_version)
+        raw_steps = plan_payload.get("steps")
+        if isinstance(raw_steps, list):
+            plan_steps = [step for step in raw_steps if isinstance(step, dict)]
+
+    if plan_version is None:
+        next_command = f"calt plan import {resolved_session_id} <plan_file>"
+        reason = "plan_version is missing"
+    elif needs_replan or status in _FAILED_SESSION_STATUSES:
+        next_command = f"calt plan import {resolved_session_id} <new_plan_file>"
+        reason = "session is in replan-required state"
+    elif status == "awaiting_plan_approval":
+        next_command = (
+            f"calt plan approve {resolved_session_id} {plan_version}"
+            " --approved-by cli --source cli"
+        )
+        reason = "plan approval is pending"
+    else:
+        unapproved_step_id = _find_first_step_id_by_status(
+            plan_steps,
+            statuses=_UNAPPROVED_STEP_STATUSES,
+        )
+        if unapproved_step_id is not None:
+            next_command = (
+                f"calt step approve {resolved_session_id} {unapproved_step_id}"
+                " --approved-by cli --source cli"
+            )
+            reason = f"step {unapproved_step_id} is not approved"
+        else:
+            approved_not_executed_step_id = _find_first_step_id_by_status(
+                plan_steps,
+                statuses=_APPROVED_NOT_EXECUTED_STEP_STATUSES,
+            )
+            if approved_not_executed_step_id is not None:
+                next_command = f"calt step execute {resolved_session_id} {approved_not_executed_step_id}"
+                reason = f"step {approved_not_executed_step_id} is approved but not executed"
+            else:
+                next_command = "calt session create --goal <new_goal>"
+                reason = "no pending action in current session"
+
+    return {
+        "session_id": resolved_session_id,
+        "status": status,
+        "needs_replan": needs_replan,
+        "next_command": next_command,
+        "reason": reason,
+        "plan_version": plan_version,
+    }
 
 
 def _render_guide_text() -> str:
@@ -846,6 +961,21 @@ def build_app(client_factory: ClientFactory | None = None) -> typer.Typer:
     @app.command("guide")
     def guide_command() -> None:
         typer.echo(_render_guide_text())
+
+    @app.command("explain")
+    def explain_command(
+        ctx: typer.Context,
+        session_id: str = typer.Argument(..., help="Session ID."),
+        json_output: bool = typer.Option(False, "--json", help="Output raw JSON payload."),
+    ) -> None:
+        settings = _require_settings(ctx)
+        _run_and_print(
+            settings,
+            resolved_client_factory,
+            lambda client: _run_explain_operation(client, session_id=session_id),
+            as_json=json_output,
+            renderer=_render_explain_payload,
+        )
 
     @app.command("quickstart")
     def quickstart_command(

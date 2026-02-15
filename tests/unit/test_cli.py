@@ -15,6 +15,18 @@ runner = CliRunner()
 class MockDaemonClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.session_response: dict[str, Any] = {
+            "id": "session-1",
+            "status": "awaiting_plan_approval",
+            "needs_replan": False,
+            "plan_version": 1,
+        }
+        self.plan_response: dict[str, Any] = {
+            "session_id": "session-1",
+            "version": 1,
+            "title": "mock plan",
+            "steps": [],
+        }
 
     async def __aenter__(self) -> MockDaemonClient:
         return self
@@ -132,6 +144,22 @@ class MockDaemonClient:
 
     async def stop_session(self, session_id: str) -> dict[str, Any]:
         return self._record("stop_session", session_id=session_id, status="cancelled")
+
+    async def get_session(self, session_id: str) -> dict[str, Any]:
+        self.calls.append(("get_session", {"session_id": session_id}))
+        payload = dict(self.session_response)
+        payload["id"] = str(payload.get("id") or session_id)
+        return payload
+
+    async def get_plan(self, session_id: str, version: int) -> dict[str, Any]:
+        self.calls.append(("get_plan", {"session_id": session_id, "version": version}))
+        payload = dict(self.plan_response)
+        payload["session_id"] = str(payload.get("session_id") or session_id)
+        payload["version"] = int(payload.get("version") or version)
+        raw_steps = payload.get("steps")
+        if isinstance(raw_steps, list):
+            payload["steps"] = [dict(step) for step in raw_steps if isinstance(step, dict)]
+        return payload
 
     async def search_events(self, session_id: str, q: str | None = None) -> dict[str, Any]:
         payload = self._record("search_events", session_id=session_id, q=q)
@@ -394,6 +422,117 @@ def test_tools_permissions_command(cli_fixture: tuple[Any, MockDaemonClient, Moc
     assert client.calls[0][0] == "get_tool_permissions"
     assert client.calls[0][1]["tool_name"] == "read_file"
     assert _parse_stdout(result)["method"] == "get_tool_permissions"
+
+
+def test_explain_command_recommends_plan_approve_for_awaiting_plan_approval(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, client, _ = cli_fixture
+    client.session_response = {
+        "id": "session-1",
+        "status": "awaiting_plan_approval",
+        "needs_replan": False,
+        "plan_version": 2,
+    }
+    client.plan_response = {
+        "session_id": "session-1",
+        "version": 2,
+        "title": "v2",
+        "steps": [{"id": "step_001", "status": "pending"}],
+    }
+
+    result = _invoke(app, ["explain", "session-1"])
+    assert result.exit_code == 0
+    assert [method for method, _ in client.calls] == ["get_session", "get_plan"]
+    payload = _parse_stdout(result)
+    assert payload["session_id"] == "session-1"
+    assert payload["status"] == "awaiting_plan_approval"
+    assert payload["needs_replan"] is False
+    assert (
+        payload["next_command"]
+        == "calt plan approve session-1 2 --approved-by cli --source cli"
+    )
+
+
+def test_explain_command_recommends_step_approve_for_unapproved_step(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, client, _ = cli_fixture
+    client.session_response = {
+        "id": "session-1",
+        "status": "awaiting_step_approval",
+        "needs_replan": False,
+        "plan_version": 3,
+    }
+    client.plan_response = {
+        "session_id": "session-1",
+        "version": 3,
+        "title": "v3",
+        "steps": [
+            {"id": "step_pending", "status": "pending"},
+            {"id": "step_done", "status": "succeeded"},
+        ],
+    }
+
+    result = _invoke(app, ["explain", "session-1"])
+    assert result.exit_code == 0
+    payload = _parse_stdout(result)
+    assert (
+        payload["next_command"]
+        == "calt step approve session-1 step_pending --approved-by cli --source cli"
+    )
+    assert payload["reason"] == "step step_pending is not approved"
+
+
+def test_explain_command_recommends_step_execute_for_approved_unexecuted_step(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, client, _ = cli_fixture
+    client.session_response = {
+        "id": "session-1",
+        "status": "awaiting_step_approval",
+        "needs_replan": False,
+        "plan_version": 4,
+    }
+    client.plan_response = {
+        "session_id": "session-1",
+        "version": 4,
+        "title": "v4",
+        "steps": [
+            {"id": "step_done", "status": "succeeded"},
+            {"id": "step_ready", "status": "awaiting_step_approval"},
+        ],
+    }
+
+    result = _invoke(app, ["explain", "session-1"])
+    assert result.exit_code == 0
+    payload = _parse_stdout(result)
+    assert payload["next_command"] == "calt step execute session-1 step_ready"
+    assert payload["reason"] == "step step_ready is approved but not executed"
+
+
+def test_explain_command_recommends_plan_import_for_needs_replan(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, client, _ = cli_fixture
+    client.session_response = {
+        "id": "session-1",
+        "status": "failed",
+        "needs_replan": True,
+        "plan_version": 5,
+    }
+    client.plan_response = {
+        "session_id": "session-1",
+        "version": 5,
+        "title": "v5",
+        "steps": [{"id": "step_pending", "status": "pending"}],
+    }
+
+    result = _invoke(app, ["explain", "session-1"])
+    assert result.exit_code == 0
+    payload = _parse_stdout(result)
+    assert payload["next_command"] == "calt plan import session-1 <new_plan_file>"
+    assert payload["reason"] == "session is in replan-required state"
 
 
 def test_guide_command_shows_short_flow(cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory]) -> None:

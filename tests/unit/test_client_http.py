@@ -45,6 +45,8 @@ async def test_daemon_client_builds_expected_requests() -> None:
                 }
             ],
         )
+        await client.get_session("session-1")
+        await client.get_plan("session-1", 2)
         await client.approve_plan("session-1", 2, approved_by="user-1", source="cli")
         await client.approve_step("session-1", "step_001", approved_by="user-1", source="cli")
         await client.execute_step("session-1", "step_001", confirm_high_risk=True)
@@ -57,6 +59,8 @@ async def test_daemon_client_builds_expected_requests() -> None:
     assert [(req.method, req.url.path) for req in captured_requests] == [
         ("POST", "/api/v1/sessions"),
         ("POST", "/api/v1/sessions/session-1/plans/import"),
+        ("GET", "/api/v1/sessions/session-1"),
+        ("GET", "/api/v1/sessions/session-1/plans/2"),
         ("POST", "/api/v1/sessions/session-1/plans/2/approve"),
         ("POST", "/api/v1/sessions/session-1/steps/step_001/approve"),
         ("POST", "/api/v1/sessions/session-1/steps/step_001/execute"),
@@ -86,10 +90,10 @@ async def test_daemon_client_builds_expected_requests() -> None:
             }
         ],
     }
-    assert _decode_json_body(captured_requests[2]) == {"approved_by": "user-1", "source": "cli"}
-    assert _decode_json_body(captured_requests[3]) == {"approved_by": "user-1", "source": "cli"}
-    assert _decode_json_body(captured_requests[4]) == {"confirm_high_risk": True}
-    assert captured_requests[6].url.params["q"] == "list_dir"
+    assert _decode_json_body(captured_requests[4]) == {"approved_by": "user-1", "source": "cli"}
+    assert _decode_json_body(captured_requests[5]) == {"approved_by": "user-1", "source": "cli"}
+    assert _decode_json_body(captured_requests[6]) == {"confirm_high_risk": True}
+    assert captured_requests[8].url.params["q"] == "list_dir"
 
 
 @pytest.mark.anyio

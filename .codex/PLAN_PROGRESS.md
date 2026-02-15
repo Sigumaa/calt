@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズB
-- 対象項目: calt wizard run
-- 担当日時: 2026-02-15 17:20
+- 対象項目: calt explain
+- 担当日時: 2026-02-15 18:40
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -61,8 +61,10 @@
 - 2026-02-15: フェーズA-3として `src/calt/daemon/docker_env.py` を追加し、destructive apply（`write_file_apply` / `apply_patch mode=apply`）に対して strict 非Docker時は `docker required` で 409 拒否、dev 非Docker時は warning 監査イベント記録のうえ実行継続するガードを `execute_step` に統合。integration/unit テストを追加更新。
 - 2026-02-15: フェーズB-1として `calt wizard run` を追加し、`_run_flow_operation` を再利用して `flow run` 同等導線を実装。`plan_file` 未指定時のprompt（既定 `examples/sample_plan.json`）と `goal` 未指定時のprompt（既定 `session_goal`）を追加し、`tests/unit/test_cli.py` と `readme.md` を更新。
 - 2026-02-15: `uv run pytest -q tests/unit tests/integration` を実行し 108件成功を確認。`pre-commit run --all-files` を実行し全フック通過を確認。
+- 2026-02-15: フェーズB-2として `calt explain <session_id>` と `--json` を追加。`get_session`/`get_plan` で状態を判定し、次アクション提案（plan approve/step approve/step execute/replan/new session）を返す実装と単体テストを追加。`readme.md` に利用例を追記。
+- 2026-02-15: `uv run pytest -q tests/unit tests/integration` を実行し 112件成功を確認。`pre-commit run --all-files` を実行し全フック通過を確認。
 
 ## 次アクション（最大3つ）
-1. `explain` コマンドの出力項目（状態/根拠/次アクション）を定義
-2. `wizard run` の中断/再入力時UXポリシーを具体化
-3. strict/dev 差分のCLIヘルプと運用ドキュメント反映方針を確定
+1. `wizard run` の中断/再入力時UXポリシーを具体化
+2. strict/dev 差分のCLIヘルプと運用ドキュメント反映方針を確定
+3. `explain` を `wizard run` 失敗導線へ統合する方針を確定

@@ -51,6 +51,13 @@ uv run calt step execute "$SESSION_ID" step_list_workspace
 uv run calt logs search "$SESSION_ID" --query "step_executed"
 ```
 
+8. 次アクション提案を確認
+
+```bash
+uv run calt explain "$SESSION_ID"
+uv run calt explain "$SESSION_ID" --json
+```
+
 ## Next Roadmap
 
 - Safety Baseline（計画中）

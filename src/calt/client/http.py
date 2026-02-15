@@ -47,6 +47,9 @@ class DaemonApiClient:
             payload["goal"] = goal
         return await self._request("POST", "/api/v1/sessions", json=payload)
 
+    async def get_session(self, session_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/api/v1/sessions/{session_id}")
+
     async def import_plan(
         self,
         session_id: str,
