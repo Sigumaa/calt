@@ -401,6 +401,7 @@ def create_app(
             "id": row["id"],
             "goal": row["goal"] or None,
             "status": row["status"],
+            "needs_replan": row["status"] == WorkflowStatus.failed.value,
             "plan_version": version_row["current_plan_version"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
@@ -655,7 +656,20 @@ def create_app(
     ) -> dict[str, Any]:
         connection = connect_sqlite(database_path)
         try:
-            _fetch_session_or_404(connection, session_id)
+            session_row = _fetch_session_or_404(connection, session_id)
+            if session_row["status"] == WorkflowStatus.failed.value:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="session needs replan before execution",
+                )
+            if session_row["status"] in {
+                WorkflowStatus.cancelled.value,
+                WorkflowStatus.skipped.value,
+            }:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"session is not executable in status: {session_row['status']}",
+                )
             step_row = _fetch_step_or_404(connection, session_id, step_id)
 
             plan_approved = connection.execute(
