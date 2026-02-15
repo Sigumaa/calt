@@ -63,19 +63,24 @@ class StepExecutor:
             )
 
         if tool == "write_file_apply":
+            preview = self._require_preview_input(inputs, tool="write_file_apply")
             return write_file_apply(
                 workspace_root=self._require_input(inputs, "workspace_root"),
                 path=self._require_input(inputs, "path"),
                 content=self._require_input(inputs, "content"),
-                preview=inputs.get("preview"),
+                preview=preview,
             )
 
         if tool == "apply_patch":
+            mode = self._require_input(inputs, "mode")
+            preview = inputs.get("preview")
+            if mode == "apply":
+                preview = self._require_preview_input(inputs, tool="apply_patch mode=apply")
             return apply_patch(
                 workspace_root=self._require_input(inputs, "workspace_root"),
                 patch=self._require_input(inputs, "patch"),
-                mode=self._require_input(inputs, "mode"),
-                preview=inputs.get("preview"),
+                mode=mode,
+                preview=preview,
             )
 
         raise ValueError(f"unknown tool: {tool}")
@@ -85,3 +90,10 @@ class StepExecutor:
         if key not in inputs:
             raise ValueError(f"missing required input: {key}")
         return inputs[key]
+
+    @staticmethod
+    def _require_preview_input(inputs: dict[str, Any], *, tool: str) -> Any:
+        preview = inputs.get("preview")
+        if preview is None:
+            raise ValueError(f"preview is required for {tool}")
+        return preview

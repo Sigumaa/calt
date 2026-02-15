@@ -14,7 +14,7 @@
 ## 受け入れ基準チェック
 - [x] Plan未承認またはStep未承認で実行不可
 - [x] 全ツール実行がイベントとして追跡可能
-- [ ] previewなしでapply不可
+- [x] previewなしでapply不可
 - [x] 失敗時は自動停止し続行しない
 - [x] FTS検索で実行ログを検索可能
 - [ ] DiscordとCLIから同一sessionを操作可能
@@ -33,8 +33,9 @@
 - 2026-02-15: `src/calt/runtime/` を新規作成し、Step実行器を追加。`step execute` から既存tools実行・runs/events記録・artifactファイル保存まで統合。
 - 2026-02-15: `events search` をFTS失敗時にLIKEフォールバック対応し、`artifacts list` が実行生成データを返す統合テストを追加。
 - 2026-02-15: `src/calt/tools/` と `tests/unit/test_tools_readonly.py` `tests/unit/test_tools_two_phase.py` を取り込み確認し、`uv run pytest -q tests/unit/test_tools_readonly.py tests/unit/test_tools_two_phase.py` 24件成功と `pre-commit run --all-files` 通過を確認。
+- 2026-02-15: runtime/daemonにpreview gateを追加し、`write_file_apply` と `apply_patch mode=apply` のpreviewなし実行を拒否。失敗時のruns/events記録と統合テスト（拒否/成功）を追加。
 
 ## 次アクション（最大3つ）
-1. previewなしapply拒否をruntimeレイヤで強制し、受け入れ基準を完了に更新する
-2. CLIとDiscordから同一sessionを操作する結合経路を実装・検証する
-3. E2E 2本を追加して受け入れ基準を完了する
+1. CLIとDiscordから同一sessionを操作する結合経路を実装・検証する
+2. E2E 2本を追加して受け入れ基準を完了する
+3. フェーズ2の残り統合項目を棚卸しし、フェーズ3着手条件を確定する

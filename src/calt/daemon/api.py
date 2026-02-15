@@ -10,7 +10,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from calt.core import Run, Session, WorkflowStatus, transition_run
-from calt.runtime import StepExecutor
+from calt.runtime import StepExecutor, StepRunResult
 from calt.storage import connect_sqlite, initialize_storage
 
 DEFAULT_TOOLS: tuple[tuple[str, str, str], ...] = (
@@ -226,6 +226,92 @@ def _to_relative_artifact_path(path: Path, root: Path) -> str:
         return path.resolve().relative_to(root.resolve()).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _preview_signature(preview: Any) -> tuple[str, str, str] | None:
+    if not isinstance(preview, dict):
+        return None
+    path = preview.get("path")
+    diff = preview.get("diff")
+    new_sha256 = preview.get("new_sha256")
+    if not isinstance(path, str) or not isinstance(diff, str) or not isinstance(new_sha256, str):
+        return None
+    return path, diff, new_sha256
+
+
+def _has_matching_preview_record(
+    connection: sqlite3.Connection,
+    *,
+    session_id: str,
+    preview_tool: str,
+    preview_signature: tuple[str, str, str],
+) -> bool:
+    rows = connection.execute(
+        """
+        SELECT payload_text
+        FROM events
+        WHERE session_id = ?
+          AND event_type = 'step_executed'
+        ORDER BY id DESC
+        LIMIT 200
+        """,
+        (session_id,),
+    ).fetchall()
+    for row in rows:
+        payload_text = row["payload_text"] or ""
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("tool") != preview_tool or payload.get("runtime_status") != "succeeded":
+            continue
+
+        output = payload.get("output")
+        if not isinstance(output, dict):
+            continue
+        if output.get("applied") is True:
+            continue
+        if _preview_signature(output) == preview_signature:
+            return True
+    return False
+
+
+def _preview_gate_error(
+    connection: sqlite3.Connection,
+    *,
+    session_id: str,
+    tool_name: str,
+    step_inputs: dict[str, Any],
+) -> str | None:
+    preview_tool: str | None = None
+    if tool_name == "write_file_apply":
+        preview_tool = "write_file_preview"
+    elif tool_name == "apply_patch" and step_inputs.get("mode") == "apply":
+        preview_tool = "apply_patch"
+
+    if preview_tool is None:
+        return None
+
+    preview_signature = _preview_signature(step_inputs.get("preview"))
+    if preview_signature is None:
+        return (
+            "preview gate rejected: preview payload is required and must include "
+            "path/diff/new_sha256"
+        )
+
+    if not _has_matching_preview_record(
+        connection,
+        session_id=session_id,
+        preview_tool=preview_tool,
+        preview_signature=preview_signature,
+    ):
+        return (
+            "preview gate rejected: no direct or matching preview record found "
+            "in this session"
+        )
+    return None
 
 
 def create_app(
@@ -617,11 +703,20 @@ def create_app(
             transition_run(run, WorkflowStatus.awaiting_step_approval)
             transition_run(run, WorkflowStatus.running)
 
-            runtime_result = step_executor.execute(
-                tool=step_row["tool_name"],
-                inputs=runtime_inputs,
-                timeout=timeout_sec,
+            gate_error = _preview_gate_error(
+                connection,
+                session_id=session_id,
+                tool_name=step_row["tool_name"],
+                step_inputs=runtime_inputs,
             )
+            if gate_error is None:
+                runtime_result = step_executor.execute(
+                    tool=step_row["tool_name"],
+                    inputs=runtime_inputs,
+                    timeout=timeout_sec,
+                )
+            else:
+                runtime_result = StepRunResult(status="failed", error=gate_error)
             if runtime_result.status == "succeeded":
                 transition_run(run, WorkflowStatus.succeeded)
                 step_status = WorkflowStatus.succeeded
