@@ -19,8 +19,15 @@ def database_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def app(database_path: Path):
-    return create_app(database_path)
+def data_root(tmp_path: Path) -> Path:
+    root = tmp_path / "data"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+@pytest.fixture
+def app(database_path: Path, data_root: Path):
+    return create_app(database_path, data_root=data_root)
 
 
 @pytest.fixture
@@ -134,9 +141,10 @@ async def test_write_apply_without_preview_is_rejected_and_recorded(
 async def test_write_apply_succeeds_after_preview_record(
     client: AsyncClient,
     database_path: Path,
+    data_root: Path,
 ) -> None:
     session_id = await _create_session(client)
-    workspace_root = database_path.parent / "data" / "sessions" / session_id / "workspace"
+    workspace_root = data_root / "sessions" / session_id / "workspace"
     expected_preview = write_file_preview(workspace_root, "memo.txt", "after\n")
 
     plan_payload = {

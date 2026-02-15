@@ -34,6 +34,7 @@
 - 2026-02-15: `events search` をFTS失敗時にLIKEフォールバック対応し、`artifacts list` が実行生成データを返す統合テストを追加。
 - 2026-02-15: `src/calt/tools/` と `tests/unit/test_tools_readonly.py` `tests/unit/test_tools_two_phase.py` を取り込み確認し、`uv run pytest -q tests/unit/test_tools_readonly.py tests/unit/test_tools_two_phase.py` 24件成功と `pre-commit run --all-files` 通過を確認。
 - 2026-02-15: runtime/daemonにpreview gateを追加し、`write_file_apply` と `apply_patch mode=apply` のpreviewなし実行を拒否。失敗時のruns/events記録と統合テスト（拒否/成功）を追加。
+- 2026-02-15: 安全方針に合わせて `tests/integration/test_preview_gate.py` を `tmp_path` 配下の明示 `data_root` へ隔離し、実環境非依存の疑似統合テストとして再実行。
 
 ## 次アクション（最大3つ）
 1. CLIとDiscordから同一sessionを操作する結合経路を実装・検証する
