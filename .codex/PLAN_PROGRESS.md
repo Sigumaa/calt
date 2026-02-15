@@ -45,6 +45,7 @@
 - 2026-02-15: `uv run pytest -q tests/e2e` 2件成功、`uv run pytest -q` 79件成功、`pre-commit run --all-files` 全フック通過を確認。
 - 2026-02-15: `.github/workflows/docker-test.yml` を追加し、`pull_request` と `main/master` push で `bash scripts/docker_test.sh` を実行するDockerテストCIを整備。`pre-commit run --all-files` を実行して全フック通過を確認。
 - 2026-02-15: `scripts/check_docker_compose.sh` を追加し、`.codex/DOCKER_TESTING.md` にOS別のCompose導入/確認手順を追記。
+- 2026-02-15: `scripts/docker_test.sh` と `Dockerfile` を更新し、Dockerテストで `tests/e2e` を含む `tests/unit` `tests/integration` `tests/e2e` を実行する導線に変更。
 
 ## 次アクション（最大3つ）
 1. MVP完了判定を確定し、必要に応じてリリースタグ方針を決める

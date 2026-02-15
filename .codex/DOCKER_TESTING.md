@@ -33,5 +33,6 @@
 4. 端末ごとの差分確認は `bash scripts/check_docker_compose.sh` を利用
 
 ## 備考
-- 実行対象は `tests/unit` と `tests/integration`。
+- 実行対象は `tests/unit`、`tests/integration`、`tests/e2e`。
+- `scripts/docker_test.sh` は上記3ディレクトリを明示指定して実行する。
 - `tests/integration/` にDocker専用テストは追加しない。

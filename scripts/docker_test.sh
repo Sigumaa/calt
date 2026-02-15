@@ -5,6 +5,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT/docker-compose.test.yml"
 PROJECT_NAME="calt-test"
 SERVICE_NAME="calt-test"
+TEST_TARGETS=(
+  tests/unit
+  tests/integration
+  tests/e2e
+)
 
 if docker compose version >/dev/null 2>&1; then
   COMPOSE_CMD=(docker compose)
@@ -21,4 +26,5 @@ cleanup() {
 
 trap cleanup EXIT
 
-"${COMPOSE_CMD[@]}" -p "$PROJECT_NAME" -f "$COMPOSE_FILE" up --build --abort-on-container-exit --exit-code-from "$SERVICE_NAME"
+"${COMPOSE_CMD[@]}" -p "$PROJECT_NAME" -f "$COMPOSE_FILE" build "$SERVICE_NAME"
+"${COMPOSE_CMD[@]}" -p "$PROJECT_NAME" -f "$COMPOSE_FILE" run --rm "$SERVICE_NAME" "${TEST_TARGETS[@]}"

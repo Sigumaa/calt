@@ -15,4 +15,5 @@ COPY tests ./tests
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --group dev
 
-ENTRYPOINT ["/app/.venv/bin/python", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/unit", "tests/integration"]
+ENTRYPOINT ["/app/.venv/bin/python", "-m", "pytest", "-q", "-p", "no:cacheprovider"]
+CMD ["tests/unit", "tests/integration", "tests/e2e"]
