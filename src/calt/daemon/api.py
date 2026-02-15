@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -9,6 +10,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from calt.core import Run, Session, WorkflowStatus, transition_run
+from calt.runtime import StepExecutor
 from calt.storage import connect_sqlite, initialize_storage
 
 DEFAULT_TOOLS: tuple[tuple[str, str, str], ...] = (
@@ -29,6 +31,8 @@ class PlanStepInput(BaseModel):
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     tool: str = Field(min_length=1)
+    inputs: dict[str, Any] = Field(default_factory=dict)
+    timeout_sec: int = Field(default=30, ge=1, le=120)
 
 
 class PlanImportRequest(BaseModel):
@@ -125,6 +129,7 @@ def _fetch_step_or_404(
             s.title,
             s.tool_name,
             s.status,
+            s.payload_json,
             p.id AS plan_id,
             p.version AS plan_version
         FROM steps AS s
@@ -161,17 +166,81 @@ def _insert_event(
     )
 
 
+def _parse_step_payload(payload_json: str | None) -> tuple[dict[str, Any], int]:
+    default_timeout = 30
+    if not payload_json:
+        return {}, default_timeout
+
+    try:
+        payload = json.loads(payload_json)
+    except json.JSONDecodeError:
+        return {}, default_timeout
+
+    if not isinstance(payload, dict):
+        return {}, default_timeout
+
+    raw_inputs = payload.get("inputs", {})
+    inputs = raw_inputs if isinstance(raw_inputs, dict) else {}
+
+    raw_timeout = payload.get("timeout_sec", default_timeout)
+    try:
+        timeout_sec = int(raw_timeout)
+    except (TypeError, ValueError):
+        timeout_sec = default_timeout
+
+    timeout_sec = max(1, min(120, timeout_sec))
+    return inputs, timeout_sec
+
+
 def _serialize_step_row(row: sqlite3.Row) -> dict[str, Any]:
+    payload_json = row["payload_json"] if "payload_json" in row.keys() else None
+    inputs, timeout_sec = _parse_step_payload(payload_json)
     return {
         "id": row["step_key"],
         "title": row["title"],
         "tool": row["tool_name"],
         "status": row["status"],
+        "inputs": inputs,
+        "timeout_sec": timeout_sec,
     }
 
 
-def create_app(database: str | Path) -> FastAPI:
+def _ensure_session_paths(data_root: Path, session_id: str) -> tuple[Path, Path]:
+    workspace_root = data_root / "sessions" / session_id / "workspace"
+    artifacts_root = data_root / "sessions" / session_id / "artifacts"
+    workspace_root.mkdir(parents=True, exist_ok=True)
+    artifacts_root.mkdir(parents=True, exist_ok=True)
+    return workspace_root, artifacts_root
+
+
+def _safe_artifact_name(name: str, *, fallback: str) -> str:
+    normalized = "".join(
+        character if character.isalnum() or character in {"-", "_", "."} else "_"
+        for character in name
+    ).strip("._")
+    return normalized or fallback
+
+
+def _to_relative_artifact_path(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def create_app(
+    database: str | Path,
+    data_root: str | Path | None = None,
+) -> FastAPI:
     database_path = str(database)
+    data_root_path = (
+        Path(data_root).resolve()
+        if data_root is not None
+        else Path(database_path).resolve().parent / "data"
+    )
+    project_root_path = data_root_path.parent
+    step_executor = StepExecutor()
+
     bootstrap_connection = connect_sqlite(database_path)
     try:
         initialize_storage(bootstrap_connection)
@@ -209,6 +278,7 @@ def create_app(database: str | Path) -> FastAPI:
                 event_type="session_created",
                 summary="session created",
             )
+            _ensure_session_paths(data_root_path, session.id)
             connection.commit()
         finally:
             connection.close()
@@ -283,8 +353,15 @@ def create_app(database: str | Path) -> FastAPI:
             for step in payload.steps:
                 connection.execute(
                     """
-                    INSERT INTO steps (plan_id, step_key, title, tool_name, status)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO steps (
+                        plan_id,
+                        step_key,
+                        title,
+                        tool_name,
+                        status,
+                        payload_json
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
                     (
                         plan_row["id"],
@@ -292,6 +369,13 @@ def create_app(database: str | Path) -> FastAPI:
                         step.title,
                         step.tool,
                         WorkflowStatus.pending.value,
+                        json.dumps(
+                            {
+                                "inputs": step.inputs,
+                                "timeout_sec": step.timeout_sec,
+                            },
+                            ensure_ascii=True,
+                        ),
                     ),
                 )
 
@@ -339,6 +423,8 @@ def create_app(database: str | Path) -> FastAPI:
                     "title": step.title,
                     "tool": step.tool,
                     "status": WorkflowStatus.pending.value,
+                    "inputs": step.inputs,
+                    "timeout_sec": step.timeout_sec,
                 }
                 for step in payload.steps
             ],
@@ -356,7 +442,7 @@ def create_app(database: str | Path) -> FastAPI:
             plan_row = _fetch_plan_or_404(connection, session_id, version)
             step_rows = connection.execute(
                 """
-                SELECT step_key, title, tool_name, status
+                SELECT step_key, title, tool_name, status, payload_json
                 FROM steps
                 WHERE plan_id = ?
                 ORDER BY id
@@ -517,6 +603,11 @@ def create_app(database: str | Path) -> FastAPI:
                     detail="plan and step approvals are required before execution",
                 )
 
+            step_inputs, timeout_sec = _parse_step_payload(step_row["payload_json"])
+            workspace_root, artifacts_root = _ensure_session_paths(data_root_path, session_id)
+            runtime_inputs = dict(step_inputs)
+            runtime_inputs.setdefault("workspace_root", str(workspace_root))
+
             run = Run(
                 session_id=session_id,
                 plan_version=step_row["plan_version"],
@@ -525,7 +616,26 @@ def create_app(database: str | Path) -> FastAPI:
             transition_run(run, WorkflowStatus.awaiting_plan_approval)
             transition_run(run, WorkflowStatus.awaiting_step_approval)
             transition_run(run, WorkflowStatus.running)
-            transition_run(run, WorkflowStatus.succeeded)
+
+            runtime_result = step_executor.execute(
+                tool=step_row["tool_name"],
+                inputs=runtime_inputs,
+                timeout=timeout_sec,
+            )
+            if runtime_result.status == "succeeded":
+                transition_run(run, WorkflowStatus.succeeded)
+                step_status = WorkflowStatus.succeeded
+            else:
+                transition_run(
+                    run,
+                    WorkflowStatus.failed,
+                    failure_reason=runtime_result.error or "tool_failed",
+                )
+                step_status = WorkflowStatus.failed
+
+            duration_ms: int | None = None
+            if run.started_at is not None and run.finished_at is not None:
+                duration_ms = int((run.finished_at - run.started_at).total_seconds() * 1000)
 
             run_cursor = connection.execute(
                 """
@@ -548,7 +658,7 @@ def create_app(database: str | Path) -> FastAPI:
                     step_row["id"],
                     step_row["tool_name"],
                     run.status.value,
-                    0,
+                    duration_ms,
                     run.failure_reason,
                     run.started_at.isoformat() if run.started_at else None,
                     run.finished_at.isoformat() if run.finished_at else None,
@@ -556,30 +666,68 @@ def create_app(database: str | Path) -> FastAPI:
             )
             run_id = run_cursor.lastrowid
 
+            saved_artifacts: list[str] = []
+            for index, artifact in enumerate(runtime_result.artifacts, start=1):
+                artifact_payload = json.dumps(
+                    artifact.payload,
+                    ensure_ascii=True,
+                    indent=2,
+                    sort_keys=True,
+                )
+                safe_name = _safe_artifact_name(
+                    artifact.name,
+                    fallback=f"artifact_{index}.json",
+                )
+                artifact_file = artifacts_root / f"run_{run_id}_{index}_{safe_name}"
+                artifact_file.write_text(f"{artifact_payload}\n", encoding="utf-8")
+                sha256 = hashlib.sha256(artifact_payload.encode("utf-8")).hexdigest()
+                artifact_path = _to_relative_artifact_path(
+                    artifact_file,
+                    root=project_root_path,
+                )
+                connection.execute(
+                    """
+                    INSERT INTO artifacts (session_id, run_id, step_id, kind, path, sha256)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        session_id,
+                        run_id,
+                        step_row["id"],
+                        artifact.kind,
+                        artifact_path,
+                        sha256,
+                    ),
+                )
+                saved_artifacts.append(artifact_path)
+
             connection.execute(
                 """
                 UPDATE steps
                 SET status = ?
                 WHERE id = ?
                 """,
-                (WorkflowStatus.succeeded.value, step_row["id"]),
+                (step_status.value, step_row["id"]),
             )
 
-            remaining_steps_row = connection.execute(
-                """
-                SELECT COUNT(*) AS remaining_count
-                FROM steps
-                WHERE plan_id = ?
-                  AND status != ?
-                """,
-                (step_row["plan_id"], WorkflowStatus.succeeded.value),
-            ).fetchone()
-            all_steps_succeeded = remaining_steps_row["remaining_count"] == 0
-            session_status = (
-                WorkflowStatus.succeeded
-                if all_steps_succeeded
-                else WorkflowStatus.awaiting_step_approval
-            )
+            if step_status == WorkflowStatus.failed:
+                session_status = WorkflowStatus.failed
+            else:
+                remaining_steps_row = connection.execute(
+                    """
+                    SELECT COUNT(*) AS remaining_count
+                    FROM steps
+                    WHERE plan_id = ?
+                      AND status != ?
+                    """,
+                    (step_row["plan_id"], WorkflowStatus.succeeded.value),
+                ).fetchone()
+                all_steps_succeeded = remaining_steps_row["remaining_count"] == 0
+                session_status = (
+                    WorkflowStatus.succeeded
+                    if all_steps_succeeded
+                    else WorkflowStatus.awaiting_step_approval
+                )
             connection.execute(
                 """
                 UPDATE sessions
@@ -593,20 +741,48 @@ def create_app(database: str | Path) -> FastAPI:
                 connection,
                 session_id=session_id,
                 run_id=run_id,
-                event_type="step_executed",
-                summary=f"step {step_id} executed",
-                payload_text=step_row["tool_name"],
+                event_type=(
+                    "step_executed"
+                    if step_status == WorkflowStatus.succeeded
+                    else "step_failed"
+                ),
+                summary=(
+                    f"step {step_id} executed"
+                    if step_status == WorkflowStatus.succeeded
+                    else f"step {step_id} failed"
+                ),
+                payload_text=json.dumps(
+                    {
+                        "tool": step_row["tool_name"],
+                        "runtime_status": runtime_result.status,
+                        "output": runtime_result.output,
+                        "error": runtime_result.error,
+                        "artifacts": saved_artifacts,
+                    },
+                    ensure_ascii=True,
+                ),
             )
+            for artifact_path in saved_artifacts:
+                _insert_event(
+                    connection,
+                    session_id=session_id,
+                    run_id=run_id,
+                    event_type="artifact_saved",
+                    summary=f"artifact saved: {artifact_path}",
+                    payload_text=artifact_path,
+                )
             connection.commit()
+            return {
+                "session_id": session_id,
+                "step_id": step_id,
+                "status": step_status.value,
+                "run_id": run_id,
+                "output": runtime_result.output,
+                "error": runtime_result.error,
+                "artifacts": saved_artifacts,
+            }
         finally:
             connection.close()
-
-        return {
-            "session_id": session_id,
-            "step_id": step_id,
-            "status": WorkflowStatus.succeeded.value,
-            "run_id": run_id,
-        }
 
     @app.post("/api/v1/sessions/{session_id}/stop")
     def stop_session(
@@ -669,7 +845,17 @@ def create_app(database: str | Path) -> FastAPI:
                         (session_id, q),
                     ).fetchall()
                 except sqlite3.OperationalError:
-                    rows = []
+                    like_pattern = f"%{q}%"
+                    rows = connection.execute(
+                        """
+                        SELECT id, event_type, summary, payload_text, source, user_id, created_at
+                        FROM events
+                        WHERE session_id = ?
+                          AND (summary LIKE ? OR payload_text LIKE ?)
+                        ORDER BY id DESC
+                        """,
+                        (session_id, like_pattern, like_pattern),
+                    ).fetchall()
             else:
                 rows = connection.execute(
                     """
