@@ -13,10 +13,12 @@ dependencies = [
     "httpx>=0.28.1",
     "pydantic>=2.12.5",
     "typer>=0.23.1",
+    "uvicorn>=0.38.0",
 ]
 
 [project.scripts]
 calt = "calt.cli:run"
+calt-daemon = "calt.daemon.entrypoint:run"
 
 [build-system]
 requires = ["uv_build>=0.9.9,<0.10.0"]
