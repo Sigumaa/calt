@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "title": "sample read-only plan",
+  "session_goal": "verify read-only step execution",
+  "steps": [
+    {
+      "id": "step_list_workspace",
+      "title": "List workspace root",
+      "tool": "list_dir",
+      "inputs": {
+        "path": "."
+      },
+      "timeout_sec": 30
+    }
+  ]
+}
