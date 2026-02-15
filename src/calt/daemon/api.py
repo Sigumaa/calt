@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Literal
@@ -199,6 +200,140 @@ def _parse_step_payload(payload_json: str | None) -> tuple[dict[str, Any], int]:
 
     timeout_sec = max(1, min(120, timeout_sec))
     return inputs, timeout_sec
+
+
+_STEP_OUTPUT_REFERENCE_RE = re.compile(
+    r"^\$\{steps\.(?P<step_id>[A-Za-z0-9_-]+)\.output(?:\.(?P<field_path>[A-Za-z0-9_.-]+))?\}$"
+)
+
+
+class StepInputReferenceResolutionError(ValueError):
+    def __init__(self, *, reference: str, reason: str) -> None:
+        self.reference = reference
+        self.reason = reason
+        super().__init__(
+            f"step input reference could not be resolved: {reference} ({reason})"
+        )
+
+
+def _contains_step_output_reference(value: Any) -> bool:
+    if isinstance(value, str):
+        return "${steps." in value
+    if isinstance(value, dict):
+        return any(_contains_step_output_reference(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_step_output_reference(item) for item in value)
+    return False
+
+
+def _load_latest_step_outputs(
+    connection: sqlite3.Connection,
+    *,
+    session_id: str,
+) -> dict[str, Any]:
+    rows = connection.execute(
+        """
+        SELECT s.step_key, e.payload_text
+        FROM events AS e
+        INNER JOIN runs AS r ON r.id = e.run_id
+        INNER JOIN steps AS s ON s.id = r.step_id
+        WHERE e.session_id = ?
+          AND e.event_type = 'step_executed'
+        ORDER BY e.id DESC
+        """,
+        (session_id,),
+    ).fetchall()
+    outputs_by_step: dict[str, Any] = {}
+    for row in rows:
+        step_key = row["step_key"]
+        if step_key in outputs_by_step:
+            continue
+        payload_text = row["payload_text"] or ""
+        try:
+            payload = json.loads(payload_text)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        outputs_by_step[step_key] = payload.get("output")
+    return outputs_by_step
+
+
+def _resolve_step_output_reference(
+    reference: str,
+    *,
+    outputs_by_step: dict[str, Any],
+) -> Any:
+    match = _STEP_OUTPUT_REFERENCE_RE.fullmatch(reference)
+    if match is None:
+        raise StepInputReferenceResolutionError(
+            reference=reference,
+            reason=(
+                "invalid format; expected "
+                "${steps.<step_id>.output} or ${steps.<step_id>.output.<field_path>}"
+            ),
+        )
+
+    step_id = match.group("step_id")
+    if step_id not in outputs_by_step:
+        raise StepInputReferenceResolutionError(
+            reference=reference,
+            reason=f"step '{step_id}' has no past step_executed output in this session",
+        )
+
+    resolved: Any = outputs_by_step[step_id]
+    field_path = match.group("field_path")
+    if field_path is None:
+        return resolved
+
+    path_parts = field_path.split(".")
+    traversed_parts: list[str] = []
+    for part in path_parts:
+        traversed_parts.append(part)
+        traversed = ".".join(traversed_parts)
+        if not isinstance(resolved, dict):
+            raise StepInputReferenceResolutionError(
+                reference=reference,
+                reason=f"field path '{traversed}' cannot be traversed on non-dict value",
+            )
+        if part not in resolved:
+            raise StepInputReferenceResolutionError(
+                reference=reference,
+                reason=f"field path '{field_path}' is missing key '{part}'",
+            )
+        resolved = resolved[part]
+    return resolved
+
+
+def _resolve_step_input_references(
+    connection: sqlite3.Connection,
+    *,
+    session_id: str,
+    inputs: dict[str, Any],
+) -> dict[str, Any]:
+    if not _contains_step_output_reference(inputs):
+        return inputs
+
+    outputs_by_step = _load_latest_step_outputs(connection, session_id=session_id)
+
+    def _resolve(value: Any) -> Any:
+        if isinstance(value, str):
+            if value.startswith("${steps.") and value.endswith("}"):
+                return _resolve_step_output_reference(
+                    value,
+                    outputs_by_step=outputs_by_step,
+                )
+            return value
+        if isinstance(value, dict):
+            return {key: _resolve(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [_resolve(item) for item in value]
+        return value
+
+    resolved = _resolve(inputs)
+    if not isinstance(resolved, dict):
+        return {}
+    return resolved
 
 
 def _serialize_step_row(row: sqlite3.Row) -> dict[str, Any]:
@@ -748,8 +883,38 @@ def create_app(
                 step_risk = "low"
 
             step_inputs, timeout_sec = _parse_step_payload(step_row["payload_json"])
+            try:
+                resolved_step_inputs = _resolve_step_input_references(
+                    connection,
+                    session_id=session_id,
+                    inputs=step_inputs,
+                )
+            except StepInputReferenceResolutionError as error:
+                detail = str(error)
+                _insert_event(
+                    connection,
+                    session_id=session_id,
+                    event_type="step_execution_rejected",
+                    summary=f"step {step_id} rejected",
+                    payload_text=json.dumps(
+                        {
+                            "reason": "step_input_reference_unresolved",
+                            "step_id": step_id,
+                            "reference": error.reference,
+                            "reference_error": error.reason,
+                            "detail": detail,
+                        },
+                        ensure_ascii=True,
+                    ),
+                )
+                connection.commit()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=detail,
+                ) from error
+
             workspace_root, artifacts_root = _ensure_session_paths(data_root_path, session_id)
-            runtime_inputs = dict(step_inputs)
+            runtime_inputs = dict(resolved_step_inputs)
             runtime_inputs.setdefault("workspace_root", str(workspace_root))
             session_mode = str(session_row["mode"] or SessionMode.normal.value)
             session_safety_profile = str(

@@ -46,7 +46,7 @@ uv run calt wizard run
 ```bash
 SESSION_ID=$(uv run calt session create --goal "quickstart" --json | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
 uv run calt plan import "$SESSION_ID" examples/sample_plan.json --json
-uv run calt plan approve "$SESSION_ID" 1 --approved-by cli --source cli
+c
 uv run calt step approve "$SESSION_ID" step_list_workspace --approved-by cli --source cli
 uv run calt step execute "$SESSION_ID" step_list_workspace
 uv run calt logs search "$SESSION_ID" --query "step_executed"
@@ -66,6 +66,13 @@ uv run calt explain "$SESSION_ID" --json
 - `examples/workspace_overview_plan.json`: `list_dir` + `read_file` でワークスペース概要を確認
 - `examples/search_inspect_plan.json`: `run_shell_readonly` + `read_file` で検索と詳細確認
 - `examples/preview_only_write_plan.json`: `write_file_preview` / `apply_patch mode=preview` の非破壊プレビュー
+- `examples/c2_two_phase_apply_plan.json`: `write_file_preview` -> `write_file_apply` の二相適用（step出力参照を利用）
+- `examples/c3_needs_replan_plan.json`: read-only失敗を意図的に起こし `needs_replan` 導線を確認
+
+step入力の参照構文:
+
+- `${steps.<step_id>.output}`
+- `${steps.<step_id>.output.<field_path>}` (`.` 区切りでdictを辿る)
 
 quickstart実行例:
 
@@ -73,6 +80,29 @@ quickstart実行例:
 uv run calt quickstart examples/workspace_overview_plan.json --goal "workspace overview"
 uv run calt quickstart examples/search_inspect_plan.json --goal "search and inspect"
 uv run calt quickstart examples/preview_only_write_plan.json --goal "preview only"
+```
+
+C-2実行例（applyを含むため `dev` profile 推奨）:
+
+```bash
+SESSION_ID=$(uv run calt session create --goal "c2 demo" --safety-profile dev --json | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+uv run calt plan import "$SESSION_ID" examples/c2_two_phase_apply_plan.json --json
+uv run calt plan approve "$SESSION_ID" 1 --approved-by cli --source cli
+uv run calt step approve "$SESSION_ID" step_preview_write --approved-by cli --source cli
+uv run calt step approve "$SESSION_ID" step_apply_write --approved-by cli --source cli
+uv run calt step execute "$SESSION_ID" step_preview_write
+uv run calt step execute "$SESSION_ID" step_apply_write
+```
+
+C-3実行例（失敗後の `needs_replan` 導線確認）:
+
+```bash
+SESSION_ID=$(uv run calt session create --goal "c3 demo" --json | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+uv run calt plan import "$SESSION_ID" examples/c3_needs_replan_plan.json --json
+uv run calt plan approve "$SESSION_ID" 1 --approved-by cli --source cli
+uv run calt step approve "$SESSION_ID" step_fail_read_missing --approved-by cli --source cli
+uv run calt step execute "$SESSION_ID" step_fail_read_missing
+uv run calt explain "$SESSION_ID"
 ```
 
 wizard実行例:

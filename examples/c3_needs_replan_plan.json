@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "title": "c3 needs-replan plan",
+  "session_goal": "trigger read-only failure and move session to needs_replan",
+  "steps": [
+    {
+      "id": "step_fail_read_missing",
+      "title": "Fail by reading a missing file",
+      "tool": "read_file",
+      "risk": "low",
+      "inputs": {
+        "path": "missing/c3_intentional_missing_file_9f4d2c8e.txt"
+      },
+      "timeout_sec": 30
+    },
+    {
+      "id": "step_unreached_list_dir",
+      "title": "This step remains pending after failure",
+      "tool": "list_dir",
+      "risk": "low",
+      "inputs": {
+        "path": "."
+      },
+      "timeout_sec": 30
+    }
+  ]
+}

@@ -1,9 +1,9 @@
 # PLAN_PROGRESS
 
 ## 現在の実施対象
-- 対象フェーズ: フェーズB
-- 対象項目: token未設定時のUX改善（B-2運用改善）
-- 担当日時: 2026-02-15 17:00
+- 対象フェーズ: フェーズC
+- 対象項目: step出力参照展開 + C-2/C-3サンプル追加
+- 担当日時: 2026-02-15 19:10
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -66,8 +66,10 @@
 - 2026-02-15: フェーズC-1として `examples/workspace_overview_plan.json` `examples/search_inspect_plan.json` `examples/preview_only_write_plan.json` を追加し、`tests/unit/test_sample_plan_json.py` を全サンプル検証へ拡張。`readme.md` にサンプルPlan一覧と quickstart/wizard 実行例を追記。
 - 2026-02-15: フェーズB-2追補として `wizard run` サマリに plan title/goal を追加し、`explain` に `plan_version` `plan_title` `pending_step_id` `pending_step_status` を追加。`tests/unit/test_cli.py` と `readme.md` を更新。
 - 2026-02-15: フェーズBのtoken未設定時UX改善として `src/calt/cli/app.py` と `src/calt/client/http.py` に空token検出を追加。通常コマンドはHTTP呼び出し前に行動可能なエラーを返し、`doctor` は token FAIL とAPI系SKIPを返すよう整理。`tests/unit/test_cli.py` と `tests/unit/test_client_http.py` を更新。
+- 2026-02-15: フェーズC-2/C-3として `src/calt/daemon/api.py` に `${steps.<step_id>.output}` / `${steps.<step_id>.output.<field_path>}` のstep入力参照展開を追加し、解決不可参照を 409 で拒否する実装を追加。`tests/integration/test_step_input_references.py` を新規追加し、成功系（applyへ参照展開）と失敗系（409）を固定。
+- 2026-02-15: `examples/c2_two_phase_apply_plan.json` と `examples/c3_needs_replan_plan.json` を追加し、`tests/unit/test_sample_plan_json.py` のサンプル検証を拡張。`readme.md` に参照構文と C-2/C-3 実行例を追記。
 
 ## 次アクション（最大3つ）
-1. フェーズC-2の preview/apply 二相サンプル（apply含む）の要件を確定
-2. フェーズC-3の失敗停止と `needs_replan` 復旧サンプルを設計
-3. サンプルPlanを使った実行ログ例を `readme.md` に追加する
+1. C-2/C-3サンプルを使った実行ログ（`events search`）の具体例をREADMEへ追加
+2. step参照構文の配列インデックス対応要否を要件として確定
+3. `needs_replan` 時の再計画テンプレート例を `examples/` へ追加検討

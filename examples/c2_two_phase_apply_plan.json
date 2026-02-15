@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "title": "c2 two-phase apply plan",
+  "session_goal": "execute preview and apply with step output reference",
+  "steps": [
+    {
+      "id": "step_preview_write",
+      "title": "Preview write target file",
+      "tool": "write_file_preview",
+      "risk": "low",
+      "inputs": {
+        "path": "notes/c2_apply_demo.txt",
+        "content": "C-2 preview apply sample\\nThis file is applied after preview approval.\\n"
+      },
+      "timeout_sec": 30
+    },
+    {
+      "id": "step_apply_write",
+      "title": "Apply write using preview output reference",
+      "tool": "write_file_apply",
+      "risk": "low",
+      "inputs": {
+        "path": "notes/c2_apply_demo.txt",
+        "content": "C-2 preview apply sample\\nThis file is applied after preview approval.\\n",
+        "preview": "${steps.step_preview_write.output}"
+      },
+      "timeout_sec": 30
+    }
+  ]
+}

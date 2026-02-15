@@ -31,7 +31,7 @@ def _load_sample_plans() -> dict[str, dict[str, object]]:
 
 def test_all_sample_plans_have_minimum_structure() -> None:
     plans = _load_sample_plans()
-    assert len(plans) >= 4
+    assert len(plans) >= 6
 
     for name, payload in plans.items():
         assert REQUIRED_PLAN_KEYS.issubset(payload), name
@@ -100,3 +100,20 @@ def test_preview_only_write_plan_expectations() -> None:
     for step in steps:
         if step["tool"] == "apply_patch":
             assert step["inputs"].get("mode") == "preview"
+
+
+def test_c2_two_phase_apply_plan_expectations() -> None:
+    payload = _load_sample_plans()["c2_two_phase_apply_plan.json"]
+    steps = payload["steps"]
+    assert len(steps) == 2
+    assert [step["tool"] for step in steps] == ["write_file_preview", "write_file_apply"]
+    assert steps[1]["inputs"]["preview"] == "${steps.step_preview_write.output}"
+
+
+def test_c3_needs_replan_plan_expectations() -> None:
+    payload = _load_sample_plans()["c3_needs_replan_plan.json"]
+    steps = payload["steps"]
+    assert len(steps) == 2
+    assert steps[0]["tool"] == "read_file"
+    assert steps[1]["tool"] == "list_dir"
+    assert "c3_intentional_missing_file" in steps[0]["inputs"]["path"]
