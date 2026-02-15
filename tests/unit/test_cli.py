@@ -686,16 +686,59 @@ def test_doctor_command_runs_diagnostics(
     assert checks["step_execute"] == "pass"
 
 
+def test_session_create_fails_when_token_is_empty_with_actionable_message(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+) -> None:
+    app, client, factory = cli_fixture
+    result = runner.invoke(
+        app,
+        [
+            "--base-url",
+            "http://daemon.local",
+            "--token",
+            "",
+            "session",
+            "create",
+            "--goal",
+            "demo",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 1
+    output = result.stdout + getattr(result, "stderr", "")
+    assert "missing or empty" in output
+    assert "CALT_DAEMON_TOKEN" in output
+    assert factory.calls == []
+    assert client.calls == []
+
+
 def test_doctor_command_fails_when_token_is_empty(
     cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
 ) -> None:
-    app, _, _ = cli_fixture
+    app, client, _ = cli_fixture
     result = runner.invoke(app, ["--base-url", "http://daemon.local", "--token", "", "doctor", "--json"])
     assert result.exit_code == 1
     payload = _parse_stdout(result)
-    checks = {item["name"]: item["status"] for item in payload["checks"]}
+    checks = {item["name"]: item for item in payload["checks"]}
     assert payload["ok"] is False
-    assert checks["token"] == "fail"
+    assert checks["token"]["status"] == "fail"
+    assert "CALT_DAEMON_TOKEN" in checks["token"]["detail"]
+    for name in (
+        "daemon_connectivity",
+        "tools_permissions",
+        "session_create",
+        "plan_import",
+        "plan_approve",
+        "step_approve",
+        "step_execute",
+        "logs_search",
+        "artifacts_list",
+        "session_stop",
+    ):
+        assert checks[name]["status"] == "skip"
+        assert "CALT_DAEMON_TOKEN" in checks[name]["detail"]
+    assert "Illegal header value" not in result.stdout
+    assert client.calls == []
 
 
 def test_flow_run_calls_client_in_order(

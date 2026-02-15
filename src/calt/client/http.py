@@ -5,6 +5,22 @@ from typing import Any, Literal
 import httpx
 
 
+MISSING_DAEMON_TOKEN_MESSAGE = (
+    "daemon token is missing or empty. Set CALT_DAEMON_TOKEN or pass --token."
+)
+
+
+class MissingDaemonTokenError(ValueError):
+    """Raised when daemon token is missing."""
+
+
+def _build_authorization_header(token: str) -> str:
+    normalized_token = token.strip()
+    if not normalized_token:
+        raise MissingDaemonTokenError(MISSING_DAEMON_TOKEN_MESSAGE)
+    return f"Bearer {normalized_token}"
+
+
 class DaemonApiClient:
     def __init__(
         self,
@@ -18,7 +34,7 @@ class DaemonApiClient:
             base_url=base_url.rstrip("/"),
             timeout=timeout,
             transport=transport,
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": _build_authorization_header(token)},
         )
 
     async def __aenter__(self) -> DaemonApiClient:

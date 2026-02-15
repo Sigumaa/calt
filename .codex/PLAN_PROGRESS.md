@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズB
-- 対象項目: wizard/explain 出力コンテキスト改善（B-2追補）
-- 担当日時: 2026-02-15 16:20
+- 対象項目: token未設定時のUX改善（B-2運用改善）
+- 担当日時: 2026-02-15 17:00
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -65,6 +65,7 @@
 - 2026-02-15: `uv run pytest -q tests/unit tests/integration` を実行し 112件成功を確認。`pre-commit run --all-files` を実行し全フック通過を確認。
 - 2026-02-15: フェーズC-1として `examples/workspace_overview_plan.json` `examples/search_inspect_plan.json` `examples/preview_only_write_plan.json` を追加し、`tests/unit/test_sample_plan_json.py` を全サンプル検証へ拡張。`readme.md` にサンプルPlan一覧と quickstart/wizard 実行例を追記。
 - 2026-02-15: フェーズB-2追補として `wizard run` サマリに plan title/goal を追加し、`explain` に `plan_version` `plan_title` `pending_step_id` `pending_step_status` を追加。`tests/unit/test_cli.py` と `readme.md` を更新。
+- 2026-02-15: フェーズBのtoken未設定時UX改善として `src/calt/cli/app.py` と `src/calt/client/http.py` に空token検出を追加。通常コマンドはHTTP呼び出し前に行動可能なエラーを返し、`doctor` は token FAIL とAPI系SKIPを返すよう整理。`tests/unit/test_cli.py` と `tests/unit/test_client_http.py` を更新。
 
 ## 次アクション（最大3つ）
 1. フェーズC-2の preview/apply 二相サンプル（apply含む）の要件を確定

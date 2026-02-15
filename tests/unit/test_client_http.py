@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 import pytest
 
-from calt.client import DaemonApiClient
+from calt.client import DaemonApiClient, MissingDaemonTokenError
 
 
 def _decode_json_body(request: httpx.Request) -> dict[str, Any] | None:
@@ -109,3 +109,9 @@ async def test_daemon_client_raises_http_status_error() -> None:
     ) as client:
         with pytest.raises(httpx.HTTPStatusError):
             await client.list_tools()
+
+
+def test_daemon_client_rejects_empty_token_before_request() -> None:
+    with pytest.raises(MissingDaemonTokenError) as exc_info:
+        DaemonApiClient(base_url="http://daemon.local", token="   ")
+    assert "CALT_DAEMON_TOKEN" in str(exc_info.value)

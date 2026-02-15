@@ -11,7 +11,7 @@ import httpx
 import typer
 
 from calt.cli.display import compose_sections, render_kv_panel, render_table
-from calt.client import DaemonApiClient
+from calt.client import DaemonApiClient, MissingDaemonTokenError
 
 
 class DaemonClientProtocol(Protocol):
@@ -742,6 +742,14 @@ def _doctor_finalize_payload(checks: list[dict[str, str]]) -> dict[str, Any]:
     }
 
 
+def _token_is_configured(token: str) -> bool:
+    return bool(token.strip())
+
+
+def _missing_token_detail() -> str:
+    return "missing or empty (set CALT_DAEMON_TOKEN or pass --token)"
+
+
 def _validate_base_url(base_url: str) -> tuple[bool, str]:
     try:
         parsed = httpx.URL(base_url)
@@ -780,8 +788,14 @@ async def _run_doctor_operation(
     base_url_ok, base_url_detail = _validate_base_url(settings.base_url)
     checks.append(_doctor_check("base_url", "pass" if base_url_ok else "fail", base_url_detail))
 
-    token_ok = bool(settings.token.strip())
-    checks.append(_doctor_check("token", "pass" if token_ok else "fail", "configured" if token_ok else "empty"))
+    token_ok = _token_is_configured(settings.token)
+    checks.append(
+        _doctor_check(
+            "token",
+            "pass" if token_ok else "fail",
+            "configured" if token_ok else _missing_token_detail(),
+        )
+    )
 
     if not base_url_ok:
         for name in (
@@ -797,6 +811,22 @@ async def _run_doctor_operation(
             "session_stop",
         ):
             checks.append(_doctor_check(name, "skip", "base_url is invalid"))
+        return _doctor_finalize_payload(checks)
+
+    if not token_ok:
+        for name in (
+            "daemon_connectivity",
+            "tools_permissions",
+            "session_create",
+            "plan_import",
+            "plan_approve",
+            "step_approve",
+            "step_execute",
+            "logs_search",
+            "artifacts_list",
+            "session_stop",
+        ):
+            checks.append(_doctor_check(name, "skip", _missing_token_detail()))
         return _doctor_finalize_payload(checks)
 
     try:
@@ -954,8 +984,21 @@ def _run_and_print(
     as_json: bool = False,
     renderer: PayloadRenderer | None = None,
 ) -> None:
+    if not _token_is_configured(settings.token):
+        typer.echo(
+            (
+                "daemon token is missing or empty. "
+                "Set CALT_DAEMON_TOKEN or pass --token."
+            ),
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     try:
         payload = anyio.run(_execute_operation, settings, client_factory, operation)
+    except MissingDaemonTokenError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1) from exc
     except httpx.HTTPStatusError as exc:
         status_code = exc.response.status_code
         detail = exc.response.text.strip() or "request failed"
