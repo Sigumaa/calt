@@ -32,7 +32,16 @@ class MockDaemonClient:
         return {"ok": True, "method": method, **payload}
 
     async def create_session(self, goal: str | None = None) -> dict[str, Any]:
-        return self._record("create_session", goal=goal)
+        payload = self._record("create_session", goal=goal)
+        payload.update(
+            {
+                "id": "session-1",
+                "status": "awaiting_plan_approval",
+                "plan_version": None,
+                "created_at": "2026-02-15T00:00:00Z",
+            }
+        )
+        return payload
 
     async def import_plan(
         self,
@@ -66,6 +75,7 @@ class MockDaemonClient:
             version=version,
             approved_by=approved_by,
             source=source,
+            approved=True,
         )
 
     async def approve_step(
@@ -82,16 +92,37 @@ class MockDaemonClient:
             step_id=step_id,
             approved_by=approved_by,
             source=source,
+            approved=True,
         )
 
     async def execute_step(self, session_id: str, step_id: str) -> dict[str, Any]:
-        return self._record("execute_step", session_id=session_id, step_id=step_id)
+        payload = self._record("execute_step", session_id=session_id, step_id=step_id)
+        payload.update(
+            {
+                "status": "succeeded",
+                "run_id": 101,
+                "error": None,
+                "artifacts": [],
+                "output": {"ok": True},
+            }
+        )
+        return payload
 
     async def stop_session(self, session_id: str) -> dict[str, Any]:
-        return self._record("stop_session", session_id=session_id)
+        return self._record("stop_session", session_id=session_id, status="cancelled")
 
     async def search_events(self, session_id: str, q: str | None = None) -> dict[str, Any]:
-        return self._record("search_events", session_id=session_id, q=q)
+        payload = self._record("search_events", session_id=session_id, q=q)
+        payload["items"] = [
+            {
+                "id": 1,
+                "event_type": "step_executed",
+                "summary": "step step_001 executed",
+                "source": "daemon",
+                "created_at": "2026-02-15T00:00:00Z",
+            }
+        ]
+        return payload
 
     async def list_artifacts(self, session_id: str) -> dict[str, Any]:
         return self._record("list_artifacts", session_id=session_id)
@@ -121,10 +152,13 @@ def cli_fixture() -> tuple[Any, MockDaemonClient, MockClientFactory]:
     return app, client, factory
 
 
-def _invoke(app: Any, args: list[str]) -> Any:
+def _invoke(app: Any, args: list[str], *, json_output: bool = True) -> Any:
+    command = [*args]
+    if json_output:
+        command.append("--json")
     return runner.invoke(
         app,
-        ["--base-url", "http://daemon.local", "--token", "test-token", *args],
+        ["--base-url", "http://daemon.local", "--token", "test-token", *command],
     )
 
 
@@ -137,7 +171,7 @@ def test_session_create_command(cli_fixture: tuple[Any, MockDaemonClient, MockCl
     result = _invoke(app, ["session", "create", "--goal", "demo"])
     assert result.exit_code == 0
     assert factory.calls == [("http://daemon.local", "test-token")]
-    assert client.calls == [("create_session", {"goal": "demo"})]
+    assert client.calls[0] == ("create_session", {"goal": "demo"})
     assert _parse_stdout(result)["method"] == "create_session"
 
 
@@ -202,6 +236,7 @@ def test_plan_approve_command(cli_fixture: tuple[Any, MockDaemonClient, MockClie
                 "version": 2,
                 "approved_by": "alice",
                 "source": "terminal",
+                "approved": True,
             },
         )
     ]
@@ -223,6 +258,7 @@ def test_step_approve_command(cli_fixture: tuple[Any, MockDaemonClient, MockClie
                 "step_id": "step_001",
                 "approved_by": "alice",
                 "source": "terminal",
+                "approved": True,
             },
         )
     ]
@@ -241,7 +277,7 @@ def test_session_stop_command(cli_fixture: tuple[Any, MockDaemonClient, MockClie
     app, client, _ = cli_fixture
     result = _invoke(app, ["session", "stop", "session-1"])
     assert result.exit_code == 0
-    assert client.calls == [("stop_session", {"session_id": "session-1"})]
+    assert client.calls == [("stop_session", {"session_id": "session-1", "status": "cancelled"})]
     assert _parse_stdout(result)["method"] == "stop_session"
 
 
@@ -275,3 +311,118 @@ def test_tools_permissions_command(cli_fixture: tuple[Any, MockDaemonClient, Moc
     assert result.exit_code == 0
     assert client.calls == [("get_tool_permissions", {"tool_name": "read_file"})]
     assert _parse_stdout(result)["method"] == "get_tool_permissions"
+
+
+def test_guide_command_shows_short_flow(cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory]) -> None:
+    app, _, _ = cli_fixture
+    result = _invoke(app, ["guide"], json_output=False)
+    assert result.exit_code == 0
+    assert "最短操作フロー" in result.stdout
+    assert "calt flow run --goal <goal> <plan_file>" in result.stdout
+
+
+def test_flow_run_calls_client_in_order(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+    tmp_path: Path,
+) -> None:
+    app, client, _ = cli_fixture
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "title": "flow plan",
+                "steps": [
+                    {"id": "step_001", "title": "first", "tool": "list_dir", "inputs": {}},
+                    {"id": "step_002", "title": "second", "tool": "list_dir", "inputs": {}},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _invoke(app, ["flow", "run", "--goal", "ship", str(plan_file)])
+    assert result.exit_code == 0
+    assert client.calls == [
+        ("create_session", {"goal": "ship"}),
+        (
+            "import_plan",
+            {
+                "session_id": "session-1",
+                "version": 1,
+                "title": "flow plan",
+                "steps": [
+                    {"id": "step_001", "title": "first", "tool": "list_dir", "inputs": {}},
+                    {"id": "step_002", "title": "second", "tool": "list_dir", "inputs": {}},
+                ],
+                "session_goal": "ship",
+            },
+        ),
+        (
+            "approve_plan",
+            {
+                "session_id": "session-1",
+                "version": 1,
+                "approved_by": "cli",
+                "source": "cli",
+                "approved": True,
+            },
+        ),
+        (
+            "approve_step",
+            {
+                "session_id": "session-1",
+                "step_id": "step_001",
+                "approved_by": "cli",
+                "source": "cli",
+                "approved": True,
+            },
+        ),
+        ("execute_step", {"session_id": "session-1", "step_id": "step_001"}),
+        (
+            "approve_step",
+            {
+                "session_id": "session-1",
+                "step_id": "step_002",
+                "approved_by": "cli",
+                "source": "cli",
+                "approved": True,
+            },
+        ),
+        ("execute_step", {"session_id": "session-1", "step_id": "step_002"}),
+    ]
+    payload = _parse_stdout(result)
+    assert payload["session_id"] == "session-1"
+    assert [item["step_id"] for item in payload["step_results"]] == ["step_001", "step_002"]
+
+
+def test_rich_output_contains_major_strings(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+    tmp_path: Path,
+) -> None:
+    app, _, _ = cli_fixture
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(
+        json.dumps(
+            {
+                "version": 2,
+                "title": "rich plan",
+                "steps": [{"id": "step_001", "title": "List", "tool": "list_dir", "inputs": {}}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    session_result = _invoke(app, ["session", "create", "--goal", "rich"], json_output=False)
+    plan_result = _invoke(app, ["plan", "import", "session-1", str(plan_file)], json_output=False)
+    step_result = _invoke(app, ["step", "execute", "session-1", "step_001"], json_output=False)
+    logs_result = _invoke(app, ["logs", "search", "session-1", "--query", "step"], json_output=False)
+
+    assert session_result.exit_code == 0
+    assert plan_result.exit_code == 0
+    assert step_result.exit_code == 0
+    assert logs_result.exit_code == 0
+    assert "Session Created" in session_result.stdout
+    assert "Plan Imported" in plan_result.stdout
+    assert "Step Executed" in step_result.stdout
+    assert "Logs Search" in logs_result.stdout

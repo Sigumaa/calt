@@ -20,7 +20,7 @@ runner = CliRunner()
 def _invoke_cli(app: object, args: list[str]):
     return runner.invoke(
         app,
-        ["--base-url", BASE_URL, "--token", AUTH_TOKEN, *args],
+        ["--base-url", BASE_URL, "--token", AUTH_TOKEN, *args, "--json"],
     )
 
 

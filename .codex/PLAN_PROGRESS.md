@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズ4
-- 対象項目: subagent-manager-workflow skill 新規作成と運用ガイド整備
-- 担当日時: 2026-02-15 12:09
+- 対象項目: CLIのリッチ表示化とガイド付き導線追加
+- 担当日時: 2026-02-15 13:20
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -52,8 +52,9 @@
 - 2026-02-15: `calt-daemon` エントリポイントを追加し、`create_app` を使う起動引数（db-path/data-root/host/port/reload）と単体テストを整備。
 - 2026-02-15: `readme.md` に最短クイックスタートを整備し、`examples/sample_plan.json` と検証テスト `tests/unit/test_sample_plan_json.py` を追加。
 - 2026-02-15: `connect_sqlite` でDBファイル親ディレクトリを自動作成するよう修正し、未存在ディレクトリ配下でも接続できる回帰テストを追加。
+- 2026-02-15: `src/calt/cli/display.py` を追加し、`session create` `plan import` `step execute` `logs search` を見やすい表示へ更新。`calt guide` と `calt flow run`、関連テスト、`readme.md` を追加更新。
 
 ## 次アクション（最大3つ）
-1. `gh-workflow` skill を実運用で適用し、`references/trigger-test-log.md` に追加ケースを蓄積する
-2. MVP完了判定を確定し、必要に応じてリリースタグ方針を決める
-3. ドキュメントの運用手順（ローカル実行・障害時リカバリ）を最終確認する
+1. `calt flow run` の失敗時表示（中断理由・再実行導線）を必要に応じて拡張する
+2. CLIの他コマンド表示（`artifacts` `tools`）の表形式を運用フィードバックで調整する
+3. ガイド表示をDiscord運用手順と整合させる
