@@ -34,7 +34,13 @@ uv run calt doctor
 uv run calt quickstart examples/sample_plan.json --goal "quickstart"
 ```
 
-6. 個別操作で実行する場合（JSON出力）
+6. 対話ウィザードで実行
+
+```bash
+uv run calt wizard run
+```
+
+7. 個別操作で実行する場合（JSON出力）
 
 ```bash
 SESSION_ID=$(uv run calt session create --goal "quickstart" --json | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')

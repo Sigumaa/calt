@@ -1,9 +1,9 @@
 # PLAN_PROGRESS
 
 ## 現在の実施対象
-- 対象フェーズ: フェーズA
-- 対象項目: Docker必須実行ガード
-- 担当日時: 2026-02-15 16:30
+- 対象フェーズ: フェーズB
+- 対象項目: calt wizard run
+- 担当日時: 2026-02-15 17:20
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -59,8 +59,10 @@
 - 2026-02-15: フェーズA-1として `session mode`（`normal`/`dry_run`）をAPI/CLI/DBへ追加し、high-risk stepの `confirm_high_risk` 必須化と dry_run 時の apply 系実行拒否（`write_file_apply`, `apply_patch mode=apply`）を実装。統合/単体テストを更新。
 - 2026-02-15: フェーズA-2として `safety_profile`（`strict`/`dev`）をSessionモデル・SQLite・API・CLI・HTTP clientへ追加。`strict` は既存の high-risk confirm と preview gate を維持し、`dev` は当該2制約をスキップするよう `execute_step` を更新。`dry_run` の destructive apply 拒否はプロファイル非依存で維持。関連するunit/integrationテストを追加更新。
 - 2026-02-15: フェーズA-3として `src/calt/daemon/docker_env.py` を追加し、destructive apply（`write_file_apply` / `apply_patch mode=apply`）に対して strict 非Docker時は `docker required` で 409 拒否、dev 非Docker時は warning 監査イベント記録のうえ実行継続するガードを `execute_step` に統合。integration/unit テストを追加更新。
+- 2026-02-15: フェーズB-1として `calt wizard run` を追加し、`_run_flow_operation` を再利用して `flow run` 同等導線を実装。`plan_file` 未指定時のprompt（既定 `examples/sample_plan.json`）と `goal` 未指定時のprompt（既定 `session_goal`）を追加し、`tests/unit/test_cli.py` と `readme.md` を更新。
+- 2026-02-15: `uv run pytest -q tests/unit tests/integration` を実行し 108件成功を確認。`pre-commit run --all-files` を実行し全フック通過を確認。
 
 ## 次アクション（最大3つ）
-1. `wizard run` の最小対話フロー仕様を確定
-2. `explain` コマンドの出力項目（状態/根拠/次アクション）を定義
+1. `explain` コマンドの出力項目（状態/根拠/次アクション）を定義
+2. `wizard run` の中断/再入力時UXポリシーを具体化
 3. strict/dev 差分のCLIヘルプと運用ドキュメント反映方針を確定

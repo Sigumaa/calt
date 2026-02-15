@@ -383,6 +383,10 @@ def _render_flow_run_payload(payload: dict[str, Any]) -> str:
     return _render_step_summary_payload(payload, summary_title="Flow Run Summary")
 
 
+def _render_wizard_run_payload(payload: dict[str, Any]) -> str:
+    return _render_step_summary_payload(payload, summary_title="Wizard Run Summary")
+
+
 def _render_quickstart_payload(payload: dict[str, Any]) -> str:
     return _render_step_summary_payload(payload, summary_title="Quickstart Summary")
 
@@ -819,6 +823,7 @@ def build_app(client_factory: ClientFactory | None = None) -> typer.Typer:
     artifacts_app = typer.Typer(no_args_is_help=True)
     tools_app = typer.Typer(no_args_is_help=True)
     flow_app = typer.Typer(no_args_is_help=True)
+    wizard_app = typer.Typer(no_args_is_help=True)
 
     @app.callback()
     def app_callback(
@@ -1133,6 +1138,62 @@ def build_app(client_factory: ClientFactory | None = None) -> typer.Typer:
             renderer=_render_flow_run_payload,
         )
 
+    @wizard_app.command("run")
+    def wizard_run(
+        ctx: typer.Context,
+        plan_file: Path | None = typer.Argument(
+            None,
+            exists=True,
+            dir_okay=False,
+            readable=True,
+            resolve_path=True,
+            help="Plan JSON file path. Prompted when omitted.",
+        ),
+        goal: str | None = typer.Option(
+            None,
+            "--goal",
+            help="Session goal. Prompted when omitted.",
+        ),
+        approved_by: str = typer.Option("cli", "--approved-by", help="Approver ID."),
+        source: str = typer.Option("cli", "--source", help="Approval source."),
+        json_output: bool = typer.Option(False, "--json", help="Output raw JSON payload."),
+    ) -> None:
+        resolved_plan_file: Path
+        if plan_file is None:
+            prompted_plan_file = typer.prompt("Plan file", default="examples/sample_plan.json")
+            resolved_plan_file = Path(prompted_plan_file).expanduser()
+        else:
+            resolved_plan_file = plan_file
+
+        version, title, steps, plan_session_goal = _load_plan_payload(resolved_plan_file)
+
+        resolved_goal: str
+        if goal is None:
+            prompt_kwargs: dict[str, Any] = {}
+            if plan_session_goal:
+                prompt_kwargs["default"] = plan_session_goal
+            resolved_goal = typer.prompt("Session goal", **prompt_kwargs)
+        else:
+            resolved_goal = goal
+
+        settings = _require_settings(ctx)
+        _run_and_print(
+            settings,
+            resolved_client_factory,
+            lambda client: _run_flow_operation(
+                client,
+                goal=resolved_goal,
+                version=version,
+                title=title,
+                steps=steps,
+                plan_session_goal=plan_session_goal,
+                approved_by=approved_by,
+                source=source,
+            ),
+            as_json=json_output,
+            renderer=_render_wizard_run_payload,
+        )
+
     app.add_typer(session_app, name="session")
     app.add_typer(plan_app, name="plan")
     app.add_typer(step_app, name="step")
@@ -1140,6 +1201,7 @@ def build_app(client_factory: ClientFactory | None = None) -> typer.Typer:
     app.add_typer(artifacts_app, name="artifacts")
     app.add_typer(tools_app, name="tools")
     app.add_typer(flow_app, name="flow")
+    app.add_typer(wizard_app, name="wizard")
     return app
 
 

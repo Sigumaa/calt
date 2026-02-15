@@ -618,6 +618,109 @@ def test_flow_run_calls_client_in_order(
     assert [item["step_id"] for item in payload["step_results"]] == ["step_001", "step_002"]
 
 
+def test_wizard_run_calls_client_in_order_with_explicit_plan_and_goal(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+    tmp_path: Path,
+) -> None:
+    app, client, _ = cli_fixture
+    plan_file = tmp_path / "wizard_plan.json"
+    plan_file.write_text(
+        json.dumps(
+            {
+                "version": 3,
+                "title": "wizard plan",
+                "steps": [{"id": "step_001", "title": "first", "tool": "list_dir", "inputs": {}}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _invoke(app, ["wizard", "run", str(plan_file), "--goal", "ship"])
+    assert result.exit_code == 0
+    assert client.calls == [
+        ("create_session", {"goal": "ship"}),
+        (
+            "import_plan",
+            {
+                "session_id": "session-1",
+                "version": 3,
+                "title": "wizard plan",
+                "steps": [{"id": "step_001", "title": "first", "tool": "list_dir", "inputs": {}}],
+                "session_goal": "ship",
+            },
+        ),
+        (
+            "approve_plan",
+            {
+                "session_id": "session-1",
+                "version": 3,
+                "approved_by": "cli",
+                "source": "cli",
+                "approved": True,
+            },
+        ),
+        (
+            "approve_step",
+            {
+                "session_id": "session-1",
+                "step_id": "step_001",
+                "approved_by": "cli",
+                "source": "cli",
+                "approved": True,
+            },
+        ),
+        ("execute_step", {"session_id": "session-1", "step_id": "step_001"}),
+    ]
+    payload = _parse_stdout(result)
+    assert payload["session_id"] == "session-1"
+    assert [item["step_id"] for item in payload["step_results"]] == ["step_001"]
+
+
+def test_wizard_run_prompts_for_plan_and_goal_when_omitted(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+    tmp_path: Path,
+) -> None:
+    app, client, _ = cli_fixture
+    plan_file = tmp_path / "wizard_prompt_plan.json"
+    plan_file.write_text(
+        json.dumps(
+            {
+                "version": 4,
+                "title": "wizard prompt plan",
+                "session_goal": "from-plan",
+                "steps": [{"id": "step_001", "title": "first", "tool": "list_dir", "inputs": {}}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        ["--base-url", "http://daemon.local", "--token", "test-token", "wizard", "run", "--json"],
+        input=f"{plan_file}\n\n",
+    )
+    assert result.exit_code == 0
+    assert client.calls[0] == ("create_session", {"goal": "from-plan"})
+    assert client.calls[1][0] == "import_plan"
+    assert client.calls[1][1]["session_goal"] == "from-plan"
+
+
+def test_wizard_run_fails_on_invalid_prompt_plan_path(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+    tmp_path: Path,
+) -> None:
+    app, client, _ = cli_fixture
+    missing_plan_file = tmp_path / "missing_plan.json"
+
+    result = runner.invoke(
+        app,
+        ["--base-url", "http://daemon.local", "--token", "test-token", "wizard", "run", "--json"],
+        input=f"{missing_plan_file}\n",
+    )
+    assert result.exit_code == 2
+    assert client.calls == []
+
+
 def test_rich_output_contains_major_strings(
     cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
     tmp_path: Path,
