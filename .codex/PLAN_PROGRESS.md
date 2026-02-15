@@ -44,6 +44,7 @@
 - 2026-02-15: `tests/e2e/test_end_to_end_flows.py` を追加し、成功系（session作成→plan取込→plan承認→全step承認/実行→ログ/成果物確認）と失敗復旧系（途中失敗→停止→needs_replan相当確認→plan version更新→再承認後再開成功）を固定。
 - 2026-02-15: `uv run pytest -q tests/e2e` 2件成功、`uv run pytest -q` 79件成功、`pre-commit run --all-files` 全フック通過を確認。
 - 2026-02-15: `.github/workflows/docker-test.yml` を追加し、`pull_request` と `main/master` push で `bash scripts/docker_test.sh` を実行するDockerテストCIを整備。`pre-commit run --all-files` を実行して全フック通過を確認。
+- 2026-02-15: `scripts/check_docker_compose.sh` を追加し、`.codex/DOCKER_TESTING.md` にOS別のCompose導入/確認手順を追記。
 
 ## 次アクション（最大3つ）
 1. MVP完了判定を確定し、必要に応じてリリースタグ方針を決める
