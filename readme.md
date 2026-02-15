@@ -112,6 +112,66 @@ uv run calt wizard run
 # plan file promptで examples/preview_only_write_plan.json などを入力
 ```
 
+## 実行ログ例
+
+`uv run calt doctor`（PASS想定）:
+
+```bash
+$ uv run calt doctor
+[PASS] env.CALT_DAEMON_BASE_URL
+[PASS] env.CALT_DAEMON_TOKEN
+[PASS] daemon.api
+[PASS] overall
+```
+
+`uv run calt wizard run examples/workspace_overview_plan.json --goal "workspace overview"`:
+
+```bash
+$ uv run calt wizard run examples/workspace_overview_plan.json --goal "workspace overview"
+session_id: s_20260215_001
+plan_title: workspace_overview_readme
+goal: workspace overview
+status: succeeded
+```
+
+`uv run calt explain <session_id>`（`next_command` 表示例）:
+
+```bash
+$ uv run calt explain s_20260215_002
+session_id: s_20260215_002
+status: awaiting_step_approval
+next_action: approve step step_read_readme
+next_command: uv run calt step approve s_20260215_002 step_read_readme --approved-by cli --source cli
+```
+
+C-2実行例（コマンド列）:
+
+```bash
+SESSION_ID=$(uv run calt session create --goal "c2 demo" --safety-profile dev --json | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+uv run calt plan import "$SESSION_ID" examples/c2_two_phase_apply_plan.json --json
+uv run calt plan approve "$SESSION_ID" 1 --approved-by cli --source cli
+uv run calt step approve "$SESSION_ID" step_preview_write --approved-by cli --source cli
+uv run calt step approve "$SESSION_ID" step_apply_write --approved-by cli --source cli
+uv run calt step execute "$SESSION_ID" step_preview_write
+uv run calt step execute "$SESSION_ID" step_apply_write
+```
+
+C-3実行例（コマンド列）:
+
+```bash
+SESSION_ID=$(uv run calt session create --goal "c3 demo" --json | python -c 'import json,sys; print(json.load(sys.stdin)["id"])')
+uv run calt plan import "$SESSION_ID" examples/c3_needs_replan_plan.json --json
+uv run calt plan approve "$SESSION_ID" 1 --approved-by cli --source cli
+uv run calt step approve "$SESSION_ID" step_fail_read_missing --approved-by cli --source cli
+uv run calt step execute "$SESSION_ID" step_fail_read_missing
+uv run calt explain "$SESSION_ID"
+```
+
+token未設定時の挙動:
+
+- 通常コマンドはHTTP呼び出し前に終了し、`CALT_DAEMON_TOKEN` の設定を促すエラーを返す。
+- `uv run calt doctor` は token を `FAIL` と表示し、token必須のAPI診断を `SKIP` と表示する。
+
 ## Next Roadmap
 
 - Safety Baseline（計画中）

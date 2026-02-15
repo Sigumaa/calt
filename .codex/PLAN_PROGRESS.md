@@ -68,6 +68,7 @@
 - 2026-02-15: フェーズBのtoken未設定時UX改善として `src/calt/cli/app.py` と `src/calt/client/http.py` に空token検出を追加。通常コマンドはHTTP呼び出し前に行動可能なエラーを返し、`doctor` は token FAIL とAPI系SKIPを返すよう整理。`tests/unit/test_cli.py` と `tests/unit/test_client_http.py` を更新。
 - 2026-02-15: フェーズC-2/C-3として `src/calt/daemon/api.py` に `${steps.<step_id>.output}` / `${steps.<step_id>.output.<field_path>}` のstep入力参照展開を追加し、解決不可参照を 409 で拒否する実装を追加。`tests/integration/test_step_input_references.py` を新規追加し、成功系（applyへ参照展開）と失敗系（409）を固定。
 - 2026-02-15: `examples/c2_two_phase_apply_plan.json` と `examples/c3_needs_replan_plan.json` を追加し、`tests/unit/test_sample_plan_json.py` のサンプル検証を拡張。`readme.md` に参照構文と C-2/C-3 実行例を追記。
+- 2026-02-15: `readme.md` に `実行ログ例` セクションを追加し、`doctor` / `wizard run` / `explain` / C-2/C-3コマンド列 / token未設定時挙動を追記。
 
 ## 次アクション（最大3つ）
 1. C-2/C-3サンプルを使った実行ログ（`events search`）の具体例をREADMEへ追加
