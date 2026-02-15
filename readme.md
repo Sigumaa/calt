@@ -174,6 +174,6 @@ token未設定時の挙動:
 
 ## Next Roadmap
 
-- Safety Baseline（計画中）
-- Guided CLI（計画中）
-- 実用サンプルPlan（計画中）
+- Safety Baseline（実装済み）
+- Guided CLI（実装済み）
+- 実用サンプルPlan（実装済み）
