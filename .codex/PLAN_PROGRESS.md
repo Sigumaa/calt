@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズ4
-- 対象項目: E2E 2本追加と完了処理
-- 担当日時: 2026-02-15 14:20
+- 対象項目: gh-workflow skill 新規作成と運用ガイド整備
+- 担当日時: 2026-02-15 16:10
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -46,8 +46,9 @@
 - 2026-02-15: `.github/workflows/docker-test.yml` を追加し、`pull_request` と `main/master` push で `bash scripts/docker_test.sh` を実行するDockerテストCIを整備。`pre-commit run --all-files` を実行して全フック通過を確認。
 - 2026-02-15: `scripts/check_docker_compose.sh` を追加し、`.codex/DOCKER_TESTING.md` にOS別のCompose導入/確認手順を追記。
 - 2026-02-15: `scripts/docker_test.sh` と `Dockerfile` を更新し、Dockerテストで `tests/e2e` を含む `tests/unit` `tests/integration` `tests/e2e` を実行する導線に変更。
+- 2026-02-15: `.codex/skills/gh-workflow/` を新規作成し、`Sigumaa/calt` 限定の `gh workflow`/`gh run` 運用手順・禁止事項・トリガーテストログを整備。`AGENTS.md` に利用タイミングと非適用条件を追記。
 
 ## 次アクション（最大3つ）
-1. MVP完了判定を確定し、必要に応じてリリースタグ方針を決める
-2. E2E実行をCI導線へ接続するかを判断し、必要なら最小ジョブを追加する
+1. `gh-workflow` skill を実運用で適用し、`references/trigger-test-log.md` に追加ケースを蓄積する
+2. MVP完了判定を確定し、必要に応じてリリースタグ方針を決める
 3. ドキュメントの運用手順（ローカル実行・障害時リカバリ）を最終確認する

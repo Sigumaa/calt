@@ -1,0 +1,4 @@
+interface:
+  display_name: "GitHub Workflow 運用"
+  short_description: "Sigumaa/calt限定でgh workflow/gh runの運用操作を実施"
+  default_prompt: "$gh-workflow を使って、Sigumaa/calt の workflow/run 状態確認と必要な再実行・ログ確認を進めて。"
