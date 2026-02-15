@@ -355,19 +355,37 @@ def _collect_step_result_rows(step_results: Any) -> tuple[list[list[Any]], int]:
     return rows, succeeded
 
 
-def _render_step_summary_payload(payload: dict[str, Any], *, summary_title: str) -> str:
+def _render_step_summary_payload(
+    payload: dict[str, Any],
+    *,
+    summary_title: str,
+    include_plan_context: bool = False,
+) -> str:
     step_results = payload.get("step_results")
     rows, succeeded = _collect_step_result_rows(step_results)
 
-    summary = render_kv_panel(
-        summary_title,
+    summary_rows: list[tuple[str, Any]] = [
+        ("Session ID", payload.get("session_id")),
+        ("Plan Version", payload.get("plan_version")),
+    ]
+    if include_plan_context:
+        summary_rows.extend(
+            [
+                ("Plan Title", payload.get("plan_title")),
+                ("Goal", payload.get("goal")),
+            ]
+        )
+    summary_rows.extend(
         [
-            ("Session ID", payload.get("session_id")),
-            ("Plan Version", payload.get("plan_version")),
             ("Total Steps", payload.get("total_steps")),
             ("Succeeded", succeeded),
             ("Failed", len(rows) - succeeded),
-        ],
+        ]
+    )
+
+    summary = render_kv_panel(
+        summary_title,
+        summary_rows,
     )
     if not rows:
         return summary
@@ -388,7 +406,11 @@ def _render_flow_run_payload(payload: dict[str, Any]) -> str:
 
 
 def _render_wizard_run_payload(payload: dict[str, Any]) -> str:
-    return _render_step_summary_payload(payload, summary_title="Wizard Run Summary")
+    return _render_step_summary_payload(
+        payload,
+        summary_title="Wizard Run Summary",
+        include_plan_context=True,
+    )
 
 
 def _render_quickstart_payload(payload: dict[str, Any]) -> str:
@@ -439,6 +461,10 @@ def _render_explain_payload(payload: dict[str, Any]) -> str:
             ("Session ID", payload.get("session_id")),
             ("Status", payload.get("status")),
             ("Needs Replan", payload.get("needs_replan")),
+            ("Plan Version", payload.get("plan_version")),
+            ("Plan Title", payload.get("plan_title")),
+            ("Pending Step ID", payload.get("pending_step_id")),
+            ("Pending Step Status", payload.get("pending_step_status")),
             ("Next Command", payload.get("next_command")),
             ("Reason", payload.get("reason")),
         ],
@@ -463,11 +489,11 @@ def _coerce_int(value: Any) -> int | None:
     return None
 
 
-def _find_first_step_id_by_status(
+def _find_first_step_by_status(
     steps: list[dict[str, Any]],
     *,
     statuses: frozenset[str],
-) -> str | None:
+) -> tuple[str, str] | None:
     for step in steps:
         step_status = str(step.get("status") or "")
         if step_status not in statuses:
@@ -475,7 +501,7 @@ def _find_first_step_id_by_status(
         step_id = step.get("id")
         if step_id is None:
             continue
-        return str(step_id)
+        return str(step_id), step_status
     return None
 
 
@@ -492,11 +518,27 @@ async def _run_explain_operation(
     plan_version = _coerce_int(session_payload.get("plan_version"))
 
     plan_steps: list[dict[str, Any]] = []
+    plan_title: str | None = None
     if plan_version is not None:
         plan_payload = await client.get_plan(resolved_session_id, plan_version)
+        raw_title = plan_payload.get("title")
+        if raw_title is not None:
+            plan_title = str(raw_title)
         raw_steps = plan_payload.get("steps")
         if isinstance(raw_steps, list):
             plan_steps = [step for step in raw_steps if isinstance(step, dict)]
+
+    unapproved_step = _find_first_step_by_status(
+        plan_steps,
+        statuses=_UNAPPROVED_STEP_STATUSES,
+    )
+    approved_not_executed_step = _find_first_step_by_status(
+        plan_steps,
+        statuses=_APPROVED_NOT_EXECUTED_STEP_STATUSES,
+    )
+    pending_step = unapproved_step or approved_not_executed_step
+    pending_step_id = pending_step[0] if pending_step is not None else None
+    pending_step_status = pending_step[1] if pending_step is not None else None
 
     if plan_version is None:
         next_command = f"calt plan import {resolved_session_id} <plan_file>"
@@ -511,22 +553,16 @@ async def _run_explain_operation(
         )
         reason = "plan approval is pending"
     else:
-        unapproved_step_id = _find_first_step_id_by_status(
-            plan_steps,
-            statuses=_UNAPPROVED_STEP_STATUSES,
-        )
-        if unapproved_step_id is not None:
+        if unapproved_step is not None:
+            unapproved_step_id = unapproved_step[0]
             next_command = (
                 f"calt step approve {resolved_session_id} {unapproved_step_id}"
                 " --approved-by cli --source cli"
             )
             reason = f"step {unapproved_step_id} is not approved"
         else:
-            approved_not_executed_step_id = _find_first_step_id_by_status(
-                plan_steps,
-                statuses=_APPROVED_NOT_EXECUTED_STEP_STATUSES,
-            )
-            if approved_not_executed_step_id is not None:
+            if approved_not_executed_step is not None:
+                approved_not_executed_step_id = approved_not_executed_step[0]
                 next_command = f"calt step execute {resolved_session_id} {approved_not_executed_step_id}"
                 reason = f"step {approved_not_executed_step_id} is approved but not executed"
             else:
@@ -540,6 +576,9 @@ async def _run_explain_operation(
         "next_command": next_command,
         "reason": reason,
         "plan_version": plan_version,
+        "plan_title": plan_title,
+        "pending_step_id": pending_step_id,
+        "pending_step_status": pending_step_status,
     }
 
 
@@ -669,6 +708,7 @@ async def _run_flow_operation(
         "session_id": session_id,
         "plan_version": version,
         "plan_title": title,
+        "goal": goal,
         "total_steps": len(ordered_steps),
         "step_results": step_results,
     }

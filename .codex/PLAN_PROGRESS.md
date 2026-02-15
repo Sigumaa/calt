@@ -1,9 +1,9 @@
 # PLAN_PROGRESS
 
 ## 現在の実施対象
-- 対象フェーズ: フェーズC
-- 対象項目: 実用サンプルPlan 3本の追加（C-1）
-- 担当日時: 2026-02-15 15:06
+- 対象フェーズ: フェーズB
+- 対象項目: wizard/explain 出力コンテキスト改善（B-2追補）
+- 担当日時: 2026-02-15 16:20
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -64,8 +64,9 @@
 - 2026-02-15: フェーズB-2として `calt explain <session_id>` と `--json` を追加。`get_session`/`get_plan` で状態を判定し、次アクション提案（plan approve/step approve/step execute/replan/new session）を返す実装と単体テストを追加。`readme.md` に利用例を追記。
 - 2026-02-15: `uv run pytest -q tests/unit tests/integration` を実行し 112件成功を確認。`pre-commit run --all-files` を実行し全フック通過を確認。
 - 2026-02-15: フェーズC-1として `examples/workspace_overview_plan.json` `examples/search_inspect_plan.json` `examples/preview_only_write_plan.json` を追加し、`tests/unit/test_sample_plan_json.py` を全サンプル検証へ拡張。`readme.md` にサンプルPlan一覧と quickstart/wizard 実行例を追記。
+- 2026-02-15: フェーズB-2追補として `wizard run` サマリに plan title/goal を追加し、`explain` に `plan_version` `plan_title` `pending_step_id` `pending_step_status` を追加。`tests/unit/test_cli.py` と `readme.md` を更新。
 
 ## 次アクション（最大3つ）
 1. フェーズC-2の preview/apply 二相サンプル（apply含む）の要件を確定
 2. フェーズC-3の失敗停止と `needs_replan` 復旧サンプルを設計
-3. サンプルPlanを使った実行ログ例を `readme.md` に追加する方針を確定
+3. サンプルPlanを使った実行ログ例を `readme.md` に追加する

@@ -448,6 +448,10 @@ def test_explain_command_recommends_plan_approve_for_awaiting_plan_approval(
     assert payload["session_id"] == "session-1"
     assert payload["status"] == "awaiting_plan_approval"
     assert payload["needs_replan"] is False
+    assert payload["plan_version"] == 2
+    assert payload["plan_title"] == "v2"
+    assert payload["pending_step_id"] == "step_001"
+    assert payload["pending_step_status"] == "pending"
     assert (
         payload["next_command"]
         == "calt plan approve session-1 2 --approved-by cli --source cli"
@@ -477,6 +481,10 @@ def test_explain_command_recommends_step_approve_for_unapproved_step(
     result = _invoke(app, ["explain", "session-1"])
     assert result.exit_code == 0
     payload = _parse_stdout(result)
+    assert payload["plan_version"] == 3
+    assert payload["plan_title"] == "v3"
+    assert payload["pending_step_id"] == "step_pending"
+    assert payload["pending_step_status"] == "pending"
     assert (
         payload["next_command"]
         == "calt step approve session-1 step_pending --approved-by cli --source cli"
@@ -507,6 +515,10 @@ def test_explain_command_recommends_step_execute_for_approved_unexecuted_step(
     result = _invoke(app, ["explain", "session-1"])
     assert result.exit_code == 0
     payload = _parse_stdout(result)
+    assert payload["plan_version"] == 4
+    assert payload["plan_title"] == "v4"
+    assert payload["pending_step_id"] == "step_ready"
+    assert payload["pending_step_status"] == "awaiting_step_approval"
     assert payload["next_command"] == "calt step execute session-1 step_ready"
     assert payload["reason"] == "step step_ready is approved but not executed"
 
@@ -531,6 +543,10 @@ def test_explain_command_recommends_plan_import_for_needs_replan(
     result = _invoke(app, ["explain", "session-1"])
     assert result.exit_code == 0
     payload = _parse_stdout(result)
+    assert payload["plan_version"] == 5
+    assert payload["plan_title"] == "v5"
+    assert payload["pending_step_id"] == "step_pending"
+    assert payload["pending_step_status"] == "pending"
     assert payload["next_command"] == "calt plan import session-1 <new_plan_file>"
     assert payload["reason"] == "session is in replan-required state"
 
@@ -812,7 +828,35 @@ def test_wizard_run_calls_client_in_order_with_explicit_plan_and_goal(
     ]
     payload = _parse_stdout(result)
     assert payload["session_id"] == "session-1"
+    assert payload["plan_title"] == "wizard plan"
+    assert payload["goal"] == "ship"
     assert [item["step_id"] for item in payload["step_results"]] == ["step_001"]
+
+
+def test_wizard_run_rich_output_includes_plan_title_and_goal(
+    cli_fixture: tuple[Any, MockDaemonClient, MockClientFactory],
+    tmp_path: Path,
+) -> None:
+    app, _, _ = cli_fixture
+    plan_file = tmp_path / "wizard_rich_plan.json"
+    plan_file.write_text(
+        json.dumps(
+            {
+                "version": 5,
+                "title": "wizard rich plan",
+                "steps": [{"id": "step_001", "title": "first", "tool": "list_dir", "inputs": {}}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = _invoke(app, ["wizard", "run", str(plan_file), "--goal", "ship"], json_output=False)
+    assert result.exit_code == 0
+    assert "Wizard Run Summary" in result.stdout
+    assert "Plan Title" in result.stdout
+    assert "wizard rich plan" in result.stdout
+    assert "Goal" in result.stdout
+    assert "ship" in result.stdout
 
 
 def test_wizard_run_prompts_for_plan_and_goal_when_omitted(

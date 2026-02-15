@@ -38,6 +38,7 @@ uv run calt quickstart examples/sample_plan.json --goal "quickstart"
 
 ```bash
 uv run calt wizard run
+# 実行サマリに Plan Title / Goal を表示
 ```
 
 7. 個別操作で実行する場合（JSON出力）
@@ -56,6 +57,7 @@ uv run calt logs search "$SESSION_ID" --query "step_executed"
 ```bash
 uv run calt explain "$SESSION_ID"
 uv run calt explain "$SESSION_ID" --json
+# --json で plan_version / plan_title / pending_step_id / pending_step_status を確認可能
 ```
 
 ## サンプルPlan一覧と実行例
