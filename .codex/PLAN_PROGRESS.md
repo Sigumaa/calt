@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズC
-- 対象項目: step出力参照展開 + C-2/C-3サンプル追加
-- 担当日時: 2026-02-15 19:10
+- 対象項目: subagent-manager-workflow のブートストラップ運用拡張
+- 担当日時: 2026-02-16 01:12
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -72,8 +72,9 @@
 - 2026-02-15: `readme.md` の `## Next Roadmap` セクションで 3件の `（計画中）` を `（実装済み）` に更新。
 - 2026-02-15: `readme.md` の `## Next Roadmap` から実装済み3項目を削除し、空セクションになったため見出しごと整理。
 - 2026-02-15: `.codex/skills/plan-governed-subagent-workflow/` を新規作成し、`SKILL.md` `agents/openai.yaml` `references/trigger-test-log.md` を整備。`AGENTS.md` の Available skills・利用タイミング・非適用条件を更新し、新skill作成とAGENTS整合更新を実施。
+- 2026-02-16: `/home/shiyui/.codex/skills/subagent-manager-workflow/` を更新し、Plan確定後の `.codex` / `.github` ブートストラップ整備手順を追加。`references/bootstrap-file-contract.md` を新設し、`agents/openai.yaml` と `references/trigger-test-log.md` を更新。`quick_validate` を再実行して pass を確認し、`AGENTS.md` の skill説明・利用タイミング・非適用条件を整合更新。
 
 ## 次アクション（最大3つ）
-1. 新skillを実運用タスクで適用し、トリガー誤判定の有無を確認
-2. `plan-governed-subagent-workflow` と `gh-workflow` の連携例を追加検討
-3. `.codex/PLAN_PROGRESS.md` 更新運用のテンプレ化可否を確認
+1. `subagent-manager-workflow` を別リポジトリで試験適用し、ブートストラップ生成結果を検証する
+2. `plan-governed-subagent-workflow` との役割分担を整理し、重複があれば一本化方針を決める
+3. `.codex` ブートストラップ生成をスクリプト化するかを評価する
