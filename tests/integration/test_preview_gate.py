@@ -83,7 +83,9 @@ async def _approve_step(client: AsyncClient, session_id: str, step_id: str) -> N
 async def test_write_apply_without_preview_is_rejected_and_recorded(
     client: AsyncClient,
     database_path: Path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setattr("calt.daemon.api.is_running_in_docker", lambda: True)
     session_id = await _create_session(client)
     plan_payload = {
         "version": 1,
@@ -185,7 +187,9 @@ async def test_write_apply_succeeds_after_preview_record(
     client: AsyncClient,
     database_path: Path,
     data_root: Path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setattr("calt.daemon.api.is_running_in_docker", lambda: True)
     session_id = await _create_session(client)
     workspace_root = data_root / "sessions" / session_id / "workspace"
     expected_preview = write_file_preview(workspace_root, "memo.txt", "after\n")
@@ -253,6 +257,198 @@ async def test_write_apply_succeeds_after_preview_record(
         assert [row["status"] for row in run_rows] == ["succeeded", "succeeded"]
     finally:
         connection.close()
+
+
+@pytest.mark.anyio
+async def test_strict_profile_rejects_write_apply_outside_docker(
+    client: AsyncClient,
+    database_path: Path,
+    data_root: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("calt.daemon.api.is_running_in_docker", lambda: False)
+    session_id = await _create_session(client, safety_profile="strict")
+    workspace_root = data_root / "sessions" / session_id / "workspace"
+    expected_preview = write_file_preview(workspace_root, "memo.txt", "after\n")
+
+    plan_payload = {
+        "version": 1,
+        "title": "strict docker guard reject",
+        "session_goal": "strict rejects apply outside docker",
+        "steps": [
+            {
+                "id": "step_preview",
+                "title": "preview write",
+                "tool": "write_file_preview",
+                "inputs": {"path": "memo.txt", "content": "after\n"},
+                "timeout_sec": 30,
+            },
+            {
+                "id": "step_apply",
+                "title": "apply write",
+                "tool": "write_file_apply",
+                "inputs": {
+                    "path": "memo.txt",
+                    "content": "after\n",
+                    "preview": expected_preview,
+                },
+                "timeout_sec": 30,
+            },
+        ],
+    }
+    await _import_plan(client, session_id, plan_payload)
+    await _approve_plan(client, session_id)
+    await _approve_step(client, session_id, "step_preview")
+    await _approve_step(client, session_id, "step_apply")
+
+    preview_execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_preview/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert preview_execute.status_code == 200
+    assert preview_execute.json()["status"] == "succeeded"
+
+    apply_execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_apply/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert apply_execute.status_code == 409
+    assert "docker required" in apply_execute.json()["detail"]
+
+    connection = sqlite3.connect(database_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        event_row = connection.execute(
+            """
+            SELECT payload_text
+            FROM events
+            WHERE session_id = ? AND event_type = 'step_execution_rejected'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (session_id,),
+        ).fetchone()
+        assert event_row is not None
+        payload_text = event_row["payload_text"] or ""
+        assert "docker_required_for_strict_apply" in payload_text
+        assert '"guard_reason": "docker_required"' in payload_text
+        assert '"safety_profile": "strict"' in payload_text
+    finally:
+        connection.close()
+
+
+@pytest.mark.anyio
+async def test_dev_profile_allows_write_apply_outside_docker_with_warning(
+    client: AsyncClient,
+    database_path: Path,
+    data_root: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("calt.daemon.api.is_running_in_docker", lambda: False)
+    session_id = await _create_session(client, safety_profile="dev")
+    workspace_root = data_root / "sessions" / session_id / "workspace"
+    expected_preview = write_file_preview(workspace_root, "memo.txt", "after\n")
+
+    plan_payload = {
+        "version": 1,
+        "title": "dev docker guard warning",
+        "session_goal": "dev allows apply outside docker",
+        "steps": [
+            {
+                "id": "step_preview",
+                "title": "preview write",
+                "tool": "write_file_preview",
+                "inputs": {"path": "memo.txt", "content": "after\n"},
+                "timeout_sec": 30,
+            },
+            {
+                "id": "step_apply",
+                "title": "apply write",
+                "tool": "write_file_apply",
+                "inputs": {
+                    "path": "memo.txt",
+                    "content": "after\n",
+                    "preview": expected_preview,
+                },
+                "timeout_sec": 30,
+            },
+        ],
+    }
+    await _import_plan(client, session_id, plan_payload)
+    await _approve_plan(client, session_id)
+    await _approve_step(client, session_id, "step_preview")
+    await _approve_step(client, session_id, "step_apply")
+
+    preview_execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_preview/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert preview_execute.status_code == 200
+    assert preview_execute.json()["status"] == "succeeded"
+
+    apply_execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_apply/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert apply_execute.status_code == 200
+    apply_payload = apply_execute.json()
+    assert apply_payload["status"] == "succeeded"
+    assert apply_payload["output"]["applied"] is True
+    assert (workspace_root / "memo.txt").read_text(encoding="utf-8") == "after\n"
+
+    connection = sqlite3.connect(database_path)
+    connection.row_factory = sqlite3.Row
+    try:
+        event_row = connection.execute(
+            """
+            SELECT payload_text
+            FROM events
+            WHERE session_id = ? AND event_type = 'step_execution_warning'
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (session_id,),
+        ).fetchone()
+        assert event_row is not None
+        payload_text = event_row["payload_text"] or ""
+        assert "docker_not_detected_dev_allows_apply" in payload_text
+        assert '"guard_reason": "docker_not_detected_dev_allowed"' in payload_text
+        assert '"safety_profile": "dev"' in payload_text
+    finally:
+        connection.close()
+
+
+@pytest.mark.anyio
+async def test_strict_profile_allows_readonly_step_outside_docker(
+    client: AsyncClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr("calt.daemon.api.is_running_in_docker", lambda: False)
+    session_id = await _create_session(client, safety_profile="strict")
+    plan_payload = {
+        "version": 1,
+        "title": "strict readonly outside docker",
+        "session_goal": "readonly should still work",
+        "steps": [
+            {
+                "id": "step_list",
+                "title": "list directory",
+                "tool": "list_dir",
+                "inputs": {"path": "."},
+                "timeout_sec": 30,
+            }
+        ],
+    }
+    await _import_plan(client, session_id, plan_payload)
+    await _approve_plan(client, session_id)
+    await _approve_step(client, session_id, "step_list")
+
+    execute = await client.post(
+        f"/api/v1/sessions/{session_id}/steps/step_list/execute",
+        headers=AUTH_HEADERS,
+    )
+    assert execute.status_code == 200
+    assert execute.json()["status"] == "succeeded"
 
 
 @pytest.mark.anyio

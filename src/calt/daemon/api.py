@@ -10,6 +10,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
 from calt.core import Run, SafetyProfile, Session, SessionMode, WorkflowStatus, transition_run
+from calt.daemon.docker_env import is_running_in_docker
 from calt.runtime import StepExecutor, StepRunResult
 from calt.storage import connect_sqlite, initialize_storage
 
@@ -322,6 +323,12 @@ def _preview_gate_error(
             "in this session"
         )
     return None
+
+
+def _is_destructive_apply_step(tool_name: str, step_inputs: dict[str, Any]) -> bool:
+    return tool_name == "write_file_apply" or (
+        tool_name == "apply_patch" and step_inputs.get("mode") == "apply"
+    )
 
 
 def create_app(
@@ -776,8 +783,9 @@ def create_app(
                     detail=detail,
                 )
 
-            is_destructive_apply = step_row["tool_name"] == "write_file_apply" or (
-                step_row["tool_name"] == "apply_patch" and runtime_inputs.get("mode") == "apply"
+            is_destructive_apply = _is_destructive_apply_step(
+                step_row["tool_name"],
+                runtime_inputs,
             )
             if session_mode == SessionMode.dry_run.value and is_destructive_apply:
                 detail = "dry_run session rejects destructive apply operations"
@@ -802,6 +810,61 @@ def create_app(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=detail,
                 )
+
+            if is_destructive_apply:
+                docker_environment = is_running_in_docker()
+                if (
+                    session_safety_profile == SafetyProfile.strict.value
+                    and not docker_environment
+                ):
+                    detail = (
+                        "docker required: strict profile rejects destructive apply "
+                        "operations outside docker"
+                    )
+                    _insert_event(
+                        connection,
+                        session_id=session_id,
+                        event_type="step_execution_rejected",
+                        summary=f"step {step_id} rejected",
+                        payload_text=json.dumps(
+                            {
+                                "reason": "docker_required_for_strict_apply",
+                                "guard_reason": "docker_required",
+                                "step_id": step_id,
+                                "tool": step_row["tool_name"],
+                                "mode": runtime_inputs.get("mode"),
+                                "session_mode": session_mode,
+                                "safety_profile": session_safety_profile,
+                                "docker_environment": docker_environment,
+                            },
+                            ensure_ascii=True,
+                        ),
+                    )
+                    connection.commit()
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=detail,
+                    )
+                if session_safety_profile == SafetyProfile.dev.value and not docker_environment:
+                    _insert_event(
+                        connection,
+                        session_id=session_id,
+                        event_type="step_execution_warning",
+                        summary=f"step {step_id} docker guard warning",
+                        payload_text=json.dumps(
+                            {
+                                "reason": "docker_not_detected_dev_allows_apply",
+                                "guard_reason": "docker_not_detected_dev_allowed",
+                                "step_id": step_id,
+                                "tool": step_row["tool_name"],
+                                "mode": runtime_inputs.get("mode"),
+                                "session_mode": session_mode,
+                                "safety_profile": session_safety_profile,
+                                "docker_environment": docker_environment,
+                            },
+                            ensure_ascii=True,
+                        ),
+                    )
 
             run = Run(
                 session_id=session_id,

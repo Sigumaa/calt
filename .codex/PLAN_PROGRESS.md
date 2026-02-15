@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズA
-- 対象項目: strict/dev 安全プロファイル
-- 担当日時: 2026-02-15 15:20
+- 対象項目: Docker必須実行ガード
+- 担当日時: 2026-02-15 16:30
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -58,8 +58,9 @@
 - 2026-02-15: MVP完了後の拡張計画v2を策定し、優先順を安全→CLIとして再起動。
 - 2026-02-15: フェーズA-1として `session mode`（`normal`/`dry_run`）をAPI/CLI/DBへ追加し、high-risk stepの `confirm_high_risk` 必須化と dry_run 時の apply 系実行拒否（`write_file_apply`, `apply_patch mode=apply`）を実装。統合/単体テストを更新。
 - 2026-02-15: フェーズA-2として `safety_profile`（`strict`/`dev`）をSessionモデル・SQLite・API・CLI・HTTP clientへ追加。`strict` は既存の high-risk confirm と preview gate を維持し、`dev` は当該2制約をスキップするよう `execute_step` を更新。`dry_run` の destructive apply 拒否はプロファイル非依存で維持。関連するunit/integrationテストを追加更新。
+- 2026-02-15: フェーズA-3として `src/calt/daemon/docker_env.py` を追加し、destructive apply（`write_file_apply` / `apply_patch mode=apply`）に対して strict 非Docker時は `docker required` で 409 拒否、dev 非Docker時は warning 監査イベント記録のうえ実行継続するガードを `execute_step` に統合。integration/unit テストを追加更新。
 
 ## 次アクション（最大3つ）
-1. strict時のDocker必須実行ガード適用条件をAPI実行経路へ統合
-2. `wizard run` の最小対話フロー仕様を確定
-3. `explain` コマンドの出力項目（状態/根拠/次アクション）を定義
+1. `wizard run` の最小対話フロー仕様を確定
+2. `explain` コマンドの出力項目（状態/根拠/次アクション）を定義
+3. strict/dev 差分のCLIヘルプと運用ドキュメント反映方針を確定
