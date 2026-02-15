@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズC
-- 対象項目: subagent-manager-workflow のブートストラップ運用拡張
-- 担当日時: 2026-02-16 01:12
+- 対象項目: subagent-manager-workflow の暗黙知明文化と参照分割
+- 担当日時: 2026-02-15 23:40
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -73,8 +73,9 @@
 - 2026-02-15: `readme.md` の `## Next Roadmap` から実装済み3項目を削除し、空セクションになったため見出しごと整理。
 - 2026-02-15: `.codex/skills/plan-governed-subagent-workflow/` を新規作成し、`SKILL.md` `agents/openai.yaml` `references/trigger-test-log.md` を整備。`AGENTS.md` の Available skills・利用タイミング・非適用条件を更新し、新skill作成とAGENTS整合更新を実施。
 - 2026-02-16: `/home/shiyui/.codex/skills/subagent-manager-workflow/` を更新し、Plan確定後の `.codex` / `.github` ブートストラップ整備手順を追加。`references/bootstrap-file-contract.md` を新設し、`agents/openai.yaml` と `references/trigger-test-log.md` を更新。`quick_validate` を再実行して pass を確認し、`AGENTS.md` の skill説明・利用タイミング・非適用条件を整合更新。
+- 2026-02-15: `/home/shiyui/.codex/skills/subagent-manager-workflow/` の暗黙知明文化として `references/orchestration-rules.md` `references/delegation-prompt-templates.md` `references/failure-recovery-playbook.md` `references/decision-gates.md` `references/report-format.md` を追加。`SKILL.md` を参照主導の実行順と判断基準へ再編し、`trigger-test-log.md` の肯定/否定/曖昧/境界ケースと quality gate、description diff impact を拡張。`AGENTS.md` の subagent-manager-workflow 説明・利用タイミング・非適用条件を整合更新。
 
 ## 次アクション（最大3つ）
-1. `subagent-manager-workflow` を別リポジトリで試験適用し、ブートストラップ生成結果を検証する
-2. `plan-governed-subagent-workflow` との役割分担を整理し、重複があれば一本化方針を決める
-3. `.codex` ブートストラップ生成をスクリプト化するかを評価する
+1. `subagent-manager-workflow` の新規参照5点を実案件で1サイクル運用し、判定表の不足を抽出する
+2. `plan-governed-subagent-workflow` へ `decision-gates` と `report-format` の共通化を提案する
+3. `trigger-test-log` の境界ケースを月次で追加し、description diff impact 更新規約を固定する
