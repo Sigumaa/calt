@@ -11,6 +11,7 @@ ENV UV_LINK_MODE=copy \
 COPY pyproject.toml uv.lock ./
 COPY src ./src
 COPY examples ./examples
+COPY scripts ./scripts
 COPY tests ./tests
 
 RUN --mount=type=cache,target=/root/.cache/uv \

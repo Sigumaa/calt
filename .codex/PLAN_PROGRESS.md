@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズC
-- 対象項目: 他リポジトリ向け運用ブートストラップ資産化と AGENTS.md の運用ルール化
-- 担当日時: 2026-02-16 11:01
+- 対象項目: 最新 failed CI（Docker Test）復旧
+- 担当日時: 2026-02-16 11:30
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -76,8 +76,9 @@
 - 2026-02-15: `/home/shiyui/.codex/skills/subagent-manager-workflow/` の暗黙知明文化として `references/orchestration-rules.md` `references/delegation-prompt-templates.md` `references/failure-recovery-playbook.md` `references/decision-gates.md` `references/report-format.md` を追加。`SKILL.md` を参照主導の実行順と判断基準へ再編し、`trigger-test-log.md` の肯定/否定/曖昧/境界ケースと quality gate、description diff impact を拡張。`AGENTS.md` の subagent-manager-workflow 説明・利用タイミング・非適用条件を整合更新。
 
 - 2026-02-16: `scripts/bootstrap_codex_ops.sh` と `tests/unit/test_bootstrap_codex_ops.py` を追加し、`AGENTS.md` から skills説明ブロックを削除。`readme.md` に bootstrap 利用手順を追記して運用ブートストラップを repo 資産化。
+- 2026-02-16: 最新 failed run `22048043714`（Docker Test）の復旧として `Dockerfile` に `COPY scripts ./scripts` を追加。`bash scripts/docker_test.sh`（127 passed）と `pre-commit run --all-files` を実行し、CI失敗要因（`/app/scripts/bootstrap_codex_ops.sh` 不在）を解消。
 
 ## 次アクション（最大3つ）
-1. `scripts/bootstrap_codex_ops.sh` のテンプレ項目を運用実績に合わせて定期見直しする
-2. 追加したブートストラップ手順を別リポジトリへ適用し、不足テンプレを抽出する
-3. 運用ルールの更新時に `AGENTS.md` とブートストラップ生成内容の差分監視を定例化する
+1. Docker Test workflow の次回 run を監視し、今回の `scripts` 同梱修正が継続的に有効か確認する
+2. `scripts/bootstrap_codex_ops.sh` のテンプレ項目を運用実績に合わせて定期見直しする
+3. 追加したブートストラップ手順を別リポジトリへ適用し、不足テンプレを抽出する
