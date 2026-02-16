@@ -171,3 +171,12 @@ token未設定時の挙動:
 
 - 通常コマンドはHTTP呼び出し前に終了し、`CALT_DAEMON_TOKEN` の設定を促すエラーを返す。
 - `uv run calt doctor` は token を `FAIL` と表示し、token必須のAPI診断を `SKIP` と表示する。
+
+## Codex運用ブートストラップ
+
+```bash
+bash scripts/bootstrap_codex_ops.sh --root /path/to/repository
+```
+
+- `--root` 省略時はカレントディレクトリを対象とする。
+- 既存ファイルは上書きせず `SKIPPED:` を出力する。

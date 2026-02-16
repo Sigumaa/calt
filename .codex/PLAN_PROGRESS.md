@@ -2,8 +2,8 @@
 
 ## 現在の実施対象
 - 対象フェーズ: フェーズC
-- 対象項目: subagent-manager-workflow の暗黙知明文化と参照分割
-- 担当日時: 2026-02-15 23:40
+- 対象項目: 他リポジトリ向け運用ブートストラップ資産化と AGENTS.md の運用ルール化
+- 担当日時: 2026-02-16 11:01
 
 ## フェーズ進捗
 - [x] フェーズ1: 基盤（モデル/状態遷移/SQLite/API）
@@ -75,7 +75,9 @@
 - 2026-02-16: `/home/shiyui/.codex/skills/subagent-manager-workflow/` を更新し、Plan確定後の `.codex` / `.github` ブートストラップ整備手順を追加。`references/bootstrap-file-contract.md` を新設し、`agents/openai.yaml` と `references/trigger-test-log.md` を更新。`quick_validate` を再実行して pass を確認し、`AGENTS.md` の skill説明・利用タイミング・非適用条件を整合更新。
 - 2026-02-15: `/home/shiyui/.codex/skills/subagent-manager-workflow/` の暗黙知明文化として `references/orchestration-rules.md` `references/delegation-prompt-templates.md` `references/failure-recovery-playbook.md` `references/decision-gates.md` `references/report-format.md` を追加。`SKILL.md` を参照主導の実行順と判断基準へ再編し、`trigger-test-log.md` の肯定/否定/曖昧/境界ケースと quality gate、description diff impact を拡張。`AGENTS.md` の subagent-manager-workflow 説明・利用タイミング・非適用条件を整合更新。
 
+- 2026-02-16: `scripts/bootstrap_codex_ops.sh` と `tests/unit/test_bootstrap_codex_ops.py` を追加し、`AGENTS.md` から skills説明ブロックを削除。`readme.md` に bootstrap 利用手順を追記して運用ブートストラップを repo 資産化。
+
 ## 次アクション（最大3つ）
-1. `subagent-manager-workflow` の新規参照5点を実案件で1サイクル運用し、判定表の不足を抽出する
-2. `plan-governed-subagent-workflow` へ `decision-gates` と `report-format` の共通化を提案する
-3. `trigger-test-log` の境界ケースを月次で追加し、description diff impact 更新規約を固定する
+1. `scripts/bootstrap_codex_ops.sh` のテンプレ項目を運用実績に合わせて定期見直しする
+2. 追加したブートストラップ手順を別リポジトリへ適用し、不足テンプレを抽出する
+3. 運用ルールの更新時に `AGENTS.md` とブートストラップ生成内容の差分監視を定例化する
